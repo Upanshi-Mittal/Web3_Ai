@@ -11,10 +11,11 @@ import {
   VerificationAgent,
   recomputeReportHash,
   runAgents,
+  runRiskAgent,
   type AgentContext
 } from "@sentinelmesh/agents";
 import { analyzeRisk, recommendRoute } from "@sentinelmesh/risk-engine";
-import { IntentPromptSchema, type DeFiIntent, type FixtureScenario, type SentinelReport } from "@sentinelmesh/shared";
+import { DeFiIntentRequestSchema, IntentPromptSchema, type DeFiIntent, type FixtureScenario, type SentinelReport } from "@sentinelmesh/shared";
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
@@ -71,6 +72,19 @@ app.post("/risk/analyze", async (req, res, next) => {
   }
 });
 
+app.post("/api/risk", async (req, res, next) => {
+  try {
+    const { intent } = DeFiIntentRequestSchema.parse(req.body);
+    const agent = await runRiskAgent(intent);
+    res.json({
+      analysis: agent.output,
+      agent
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/route/recommend", async (req, res, next) => {
   try {
     const context = await contextFromBody(req.body);
@@ -107,10 +121,14 @@ app.post("/reports", async (req, res, next) => {
         ? {
             riskScore: body.riskScore,
             riskLevel: body.riskLevel ?? analyzeRisk(parsedIntent).riskLevel,
+            riskFactors: body.riskFactors,
+            riskExplanations: analyzeRisk(parsedIntent).riskExplanations,
+            topFactors: analyzeRisk(parsedIntent).topFactors,
             factors: body.riskFactors,
             factorExplanations: body.riskFactorExplanations ?? analyzeRisk(parsedIntent).factorExplanations,
             summary: "Risk analysis supplied by client workflow.",
-            dataSource: "deterministic" as const
+            dataSource: "mixed" as const,
+            riskEngineVersion: analyzeRisk(parsedIntent).riskEngineVersion
           }
         : analyzeRisk(parsedIntent);
     const routeRecommendation = body.recommendedRoute ?? recommendRoute(riskAnalysis);

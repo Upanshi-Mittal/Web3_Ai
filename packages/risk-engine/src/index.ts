@@ -8,6 +8,8 @@ import {
   type RouteType
 } from "@sentinelmesh/shared";
 
+export const RISK_ENGINE_VERSION = "sentinelmesh-risk-v0.3";
+
 export const RISK_WEIGHTS: Record<Exclude<keyof RiskFactors, "mevExposureRisk">, number> = {
   slippageRisk: 0.2,
   liquidityRisk: 0.2,
@@ -17,17 +19,21 @@ export const RISK_WEIGHTS: Record<Exclude<keyof RiskFactors, "mevExposureRisk">,
   routeComplexityRisk: 0.1
 };
 
-const KNOWN_TOKENS = new Set(["ETH", "WETH", "USDC", "USDT", "DAI", "WBTC"]);
+const COMMON_TOKENS = new Set(["ETH", "WETH", "USDC", "USDT", "DAI", "WBTC"]);
+const MEME_TOKENS = new Set(["PEPE", "SHIB", "DOGE", "FLOKI", "BONK"]);
+const COMMON_PAIRS = new Set(["ETH/USDC", "WETH/USDC", "ETH/DAI", "USDC/DAI"]);
+const LOW_GAS_CHAINS = new Set(["base", "arbitrum", "optimism", "polygon"]);
 
 export function clampRisk(value: number): number {
-  if (Number.isNaN(value)) return 0;
+  if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
 export function getRiskLevel(score: number): RiskLevel {
-  if (score <= 30) return "Low";
-  if (score <= 60) return "Medium";
-  if (score <= 80) return "High";
+  const clamped = clampRisk(score);
+  if (clamped <= 30) return "Low";
+  if (clamped <= 60) return "Medium";
+  if (clamped <= 80) return "High";
   return "Critical";
 }
 
@@ -44,53 +50,51 @@ export function calculateRiskScore(factors: RiskFactors): number {
 }
 
 export function estimateRiskFactors(intent: DeFiIntent): RiskFactors {
-  const amount = Number.parseFloat(intent.amount ?? "0");
-  const tokenIn = intent.tokenIn?.toUpperCase();
-  const tokenOut = intent.tokenOut?.toUpperCase();
-  const maxSlippage = Number.parseFloat(intent.constraints.maxSlippage ?? "1");
-  const isUnknownToken = Boolean(
-    (tokenIn && !KNOWN_TOKENS.has(tokenIn)) || (tokenOut && !KNOWN_TOKENS.has(tokenOut))
-  );
-  const isBridge = intent.action === "bridge";
-  const isUnsupported = intent.action === "unsupported";
-  const isLargeTrade = amount >= 10;
-  const speedPriority = intent.priority === "speed";
-
-  return {
-    slippageRisk: clampRisk(maxSlippage * 16 + (speedPriority ? 12 : 0) + (isUnknownToken ? 20 : 0)),
-    liquidityRisk: clampRisk((isUnknownToken ? 72 : 18) + (isLargeTrade ? 30 : 0) + (isBridge ? 20 : 0)),
-    priceImpactRisk: clampRisk((isLargeTrade ? 72 : 14) + (isUnknownToken ? 34 : 0)),
-    gasRisk: clampRisk(22 + (isBridge ? 42 : 0) + (speedPriority ? 12 : 0)),
-    tokenRisk: clampRisk(isUnknownToken ? 88 : isUnsupported ? 70 : 8),
-    routeComplexityRisk: clampRisk(isBridge ? 92 : isUnsupported ? 80 : isLargeTrade ? 44 : 14),
-    mevExposureRisk: clampRisk((isLargeTrade ? 82 : 22) + (speedPriority ? 18 : 0) + (maxSlippage > 3 ? 20 : 0))
+  const baseFactors = {
+    slippageRisk: scoreSlippageRisk(intent),
+    liquidityRisk: scoreLiquidityRisk(intent),
+    priceImpactRisk: scorePriceImpactRisk(intent),
+    gasRisk: scoreGasRisk(intent),
+    tokenRisk: scoreTokenRisk(intent),
+    routeComplexityRisk: scoreRouteComplexityRisk(intent),
+    mevExposureRisk: scoreMevExposureRisk(intent)
   };
+
+  return clampFactors(baseFactors);
 }
 
 export function analyzeRisk(intent: DeFiIntent, fixtureFactors?: RiskFactors): RiskAnalysis {
-  const factors = fixtureFactors ?? estimateRiskFactors(intent);
-  const riskScore = calculateRiskScore(factors);
+  const riskFactors = clampFactors(fixtureFactors ?? estimateRiskFactors(intent));
+  const riskScore = calculateRiskScore(riskFactors);
   const riskLevel = getRiskLevel(riskScore);
+  const riskExplanations = buildRiskExplanations(intent, riskFactors);
+  const factorExplanations = (Object.entries(riskFactors) as Array<[keyof RiskFactors, number]>).map(([key, score]) => ({
+    key,
+    label: RISK_FACTOR_LABELS[key],
+    score,
+    explanation: riskExplanations[key]
+  }));
+  const topFactors = [...factorExplanations].sort((a, b) => b.score - a.score).slice(0, 3);
+  const summary = buildRiskSummary(riskLevel, intent, topFactors);
 
   return {
     riskScore,
     riskLevel,
-    factors,
-    factorExplanations: (Object.entries(factors) as Array<[keyof RiskFactors, number]>).map(([key, score]) => ({
-      key,
-      label: RISK_FACTOR_LABELS[key],
-      score: clampRisk(score),
-      explanation: explainFactor(key, score, intent)
-    })),
-    summary: buildRiskSummary(riskLevel, intent),
-    dataSource: fixtureFactors ? "fixture" : "deterministic"
+    riskFactors,
+    riskExplanations,
+    topFactors,
+    dataSource: fixtureFactors ? "fixture" : "mixed",
+    riskEngineVersion: RISK_ENGINE_VERSION,
+    summary,
+    factors: riskFactors,
+    factorExplanations
   };
 }
 
 export function recommendRoute(analysis: RiskAnalysis): RouteRecommendation {
   const score = analysis.riskScore;
-  const mevRisk = analysis.factors.mevExposureRisk;
-  const priceImpact = analysis.factors.priceImpactRisk;
+  const mevRisk = analysis.riskFactors.mevExposureRisk;
+  const priceImpact = analysis.riskFactors.priceImpactRisk;
   let recommendedRoute: RouteType;
 
   if (score > 85) {
@@ -112,41 +116,219 @@ export function recommendRoute(analysis: RiskAnalysis): RouteRecommendation {
   };
 }
 
-function explainFactor(key: keyof RiskFactors, score: number, intent: DeFiIntent): string {
-  const severity = score > 80 ? "critical" : score > 60 ? "high" : score > 30 ? "moderate" : "low";
-  const pair = [intent.tokenIn, intent.tokenOut].filter(Boolean).join(" -> ") || "requested route";
-
-  const map: Record<keyof RiskFactors, string> = {
-    slippageRisk: `${severity} slippage risk based on the requested tolerance and ${intent.priority} priority.`,
-    liquidityRisk: `${severity} liquidity risk for ${pair}; fallback data is used when live liquidity is unavailable.`,
-    priceImpactRisk: `${severity} price impact risk inferred from amount, token profile, and route size.`,
-    gasRisk: `${severity} gas risk based on expected network volatility and route complexity.`,
-    tokenRisk: `${severity} token risk based on allowlist status and unsupported-asset detection.`,
-    routeComplexityRisk: `${severity} route complexity risk for the requested action.`,
-    mevExposureRisk: `${severity} MEV exposure signal; this informs routing but is not included in the v0 weighted score.`
-  };
-
-  return map[key];
+function scoreSlippageRisk(intent: DeFiIntent): number {
+  if (intent.action === "unsupported") return 85;
+  const slippage = parsePercent(intent.constraints.maxSlippage);
+  const riskToleranceBump = intent.constraints.riskTolerance === "high" ? 15 : 0;
+  if (slippage === undefined) {
+    if (intent.priority === "safety") return 25 + riskToleranceBump;
+    if (intent.priority === "speed") return 55 + riskToleranceBump;
+    return 40 + riskToleranceBump;
+  }
+  if (slippage <= 0.5) return 15 + riskToleranceBump;
+  if (slippage <= 1) return 30 + riskToleranceBump;
+  if (slippage <= 3) return 60 + riskToleranceBump;
+  return 85 + riskToleranceBump;
 }
 
-function buildRiskSummary(level: RiskLevel, intent: DeFiIntent): string {
-  if (intent.action === "bridge") {
-    return "Bridge requests are analysis-only in v0; the registry records risk reports but does not execute cross-chain routes.";
+function scoreLiquidityRisk(intent: DeFiIntent): number {
+  if (intent.action === "bridge" || intent.action === "unsupported") return 70;
+  if (hasUnknownToken(intent)) return 85;
+  if (isCommonPair(intent)) return 15;
+  if (hasCommonToken(intent) && hasMemeToken(intent)) return intent.constraints.riskTolerance === "high" ? 65 : 60;
+  if (hasCommonToken(intent)) return 25;
+  return 85;
+}
+
+function scorePriceImpactRisk(intent: DeFiIntent): number {
+  if (intent.action === "unsupported") return 75;
+  const amount = parseAmount(intent.amount);
+  if (amount === undefined) return 45;
+
+  const tokenIn = normalizeToken(intent.tokenIn);
+  let score: number;
+  if (tokenIn === "ETH" || tokenIn === "WETH") {
+    score = amount <= 1 ? 15 : amount <= 10 ? 35 : amount <= 50 ? 65 : 90;
+  } else if (tokenIn === "USDC" || tokenIn === "USDT" || tokenIn === "DAI") {
+    score = amount <= 1000 ? 15 : amount <= 10000 ? 35 : amount <= 100000 ? 65 : 90;
+  } else {
+    score = 50;
   }
-  if (level === "Low") return "The request fits the v0 safe path: known assets, manageable size, and low route complexity.";
-  if (level === "Medium") return "The request can proceed in simulation, but route timing or slippage constraints should be tightened.";
-  if (level === "High") return "The request needs protected routing or split execution before a user considers signing.";
-  return "The request is too risky for v0 execution and should be blocked or rewritten.";
+
+  if (isMemeToken(intent.tokenOut) || isUnknownToken(intent.tokenOut)) score += 15;
+  if (intent.constraints.riskTolerance === "high") score += 20;
+  return score;
+}
+
+function scoreGasRisk(intent: DeFiIntent): number {
+  const chain = normalizeChain(intent.chain);
+  let score = chain === "ethereum" ? 45 : LOW_GAS_CHAINS.has(chain) ? 20 : 35;
+  if (intent.priority === "speed") score += 10;
+  if (intent.priority === "cost") score -= 10;
+  return score;
+}
+
+function scoreTokenRisk(intent: DeFiIntent): number {
+  if (intent.action === "unsupported") return 90;
+  if (hasUnknownToken(intent)) return 85;
+  if (hasMemeToken(intent)) return 60;
+  if (areBothTokensCommon(intent)) return 10;
+  return 45;
+}
+
+function scoreRouteComplexityRisk(intent: DeFiIntent): number {
+  const chain = normalizeChain(intent.chain);
+  const unknownChainBump = chain === "unknown" ? 10 : 0;
+  const map: Record<DeFiIntent["action"], number> = {
+    swap: 15,
+    stake: 35,
+    bridge: 65,
+    analyze: 25,
+    unsupported: 90
+  };
+  return map[intent.action] + unknownChainBump;
+}
+
+function scoreMevExposureRisk(intent: DeFiIntent): number {
+  let score = intent.action === "bridge" || intent.action === "unsupported" ? 50 : 25;
+  if (intent.priority === "speed") score += 15;
+  if ((parsePercent(intent.constraints.maxSlippage) ?? 0) > 3) score += 20;
+  if (isLargeTrade(intent)) score += 25;
+  if (hasUnknownToken(intent) || hasMemeToken(intent)) score += 15;
+  return score;
+}
+
+function buildRiskExplanations(intent: DeFiIntent, factors: RiskFactors): Record<keyof RiskFactors, string> {
+  return {
+    slippageRisk: explainSlippage(factors.slippageRisk),
+    liquidityRisk: explainLiquidity(intent),
+    priceImpactRisk: "Large trades can move the execution price more, especially in lower-liquidity pools.",
+    gasRisk: "Gas risk depends on the selected chain and whether the user prioritizes speed or cost.",
+    tokenRisk: explainTokenRisk(intent),
+    routeComplexityRisk: explainRouteComplexity(intent),
+    mevExposureRisk:
+      "MEV exposure means bots may attempt to profit from transaction ordering. SentinelMesh estimates exposure but does not guarantee MEV protection."
+  };
+}
+
+function explainSlippage(score: number): string {
+  if (score <= 20) return "User requested conservative slippage, reducing chance of receiving much less than expected.";
+  if (score <= 60) return "Slippage tolerance is moderate, so execution price may differ from estimate.";
+  return "High slippage tolerance can allow poor execution.";
+}
+
+function explainLiquidity(intent: DeFiIntent): string {
+  if (intent.action === "bridge" || intent.action === "unsupported") {
+    return "Bridge or unsupported actions carry higher liquidity uncertainty in the v0 deterministic model.";
+  }
+  if (hasUnknownToken(intent)) return "An unknown token is involved, so liquidity is treated as high risk.";
+  if (hasMemeToken(intent)) return "A speculative token is involved, so available liquidity may be thinner or more volatile.";
+  if (isCommonPair(intent)) return "The token pair is common and usually has deeper liquidity.";
+  return "The pair uses known assets, but it is not one of the deepest fixture pairs.";
+}
+
+function explainTokenRisk(intent: DeFiIntent): string {
+  if (intent.action === "unsupported") return "Unsupported actions cannot be safely analyzed as executable DeFi intents in v0.";
+  if (hasUnknownToken(intent)) return "An unknown token was detected, which increases contract and market risk.";
+  if (hasMemeToken(intent)) return "A speculative token was detected, which increases volatility and liquidity risk.";
+  if (areBothTokensCommon(intent)) return "Both tokens are common assets in the v0 allowlist.";
+  return "The token set is partially known, so the model applies a moderate token-risk default.";
+}
+
+function explainRouteComplexity(intent: DeFiIntent): string {
+  if (intent.action === "bridge") return "Bridge routes involve cross-chain complexity and are riskier than simple swaps.";
+  if (intent.action === "unsupported") return "Unsupported actions are treated as high complexity because SentinelMesh cannot model them safely.";
+  if (intent.action === "stake") return "Staking has more protocol-specific assumptions than a simple swap.";
+  if (intent.action === "analyze") return "Analyze-only requests avoid execution but still need a risk explanation.";
+  return "A simple swap has low route complexity in the v0 model.";
+}
+
+function buildRiskSummary(level: RiskLevel, intent: DeFiIntent, topFactors: Array<{ label: string }>): string {
+  if (intent.action === "unsupported") {
+    return "Unsupported actions cannot be safely analyzed as executable routes; review or rewrite the prompt.";
+  }
+  const factorList = topFactors.map((factor) => factor.label).join(", ");
+  return `${level} risk based on ${factorList || "the deterministic v0 risk factors"}.`;
+}
+
+function parsePercent(value?: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseFloat(value.replace("%", ""));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseAmount(value?: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function isLargeTrade(intent: DeFiIntent): boolean {
+  const amount = parseAmount(intent.amount);
+  const tokenIn = normalizeToken(intent.tokenIn);
+  if (amount === undefined) return false;
+  if (tokenIn === "ETH" || tokenIn === "WETH") return amount > 10;
+  if (tokenIn === "USDC" || tokenIn === "USDT" || tokenIn === "DAI") return amount > 10000;
+  return amount > 10;
+}
+
+function clampFactors(factors: RiskFactors): RiskFactors {
+  return {
+    slippageRisk: clampRisk(factors.slippageRisk),
+    liquidityRisk: clampRisk(factors.liquidityRisk),
+    priceImpactRisk: clampRisk(factors.priceImpactRisk),
+    gasRisk: clampRisk(factors.gasRisk),
+    tokenRisk: clampRisk(factors.tokenRisk),
+    routeComplexityRisk: clampRisk(factors.routeComplexityRisk),
+    mevExposureRisk: clampRisk(factors.mevExposureRisk)
+  };
+}
+
+function normalizeToken(token?: string): string {
+  return token?.trim().toUpperCase() ?? "";
+}
+
+function normalizeChain(chain?: string): string {
+  return chain?.trim().toLowerCase() || "unknown";
+}
+
+function isCommonToken(token?: string): boolean {
+  return COMMON_TOKENS.has(normalizeToken(token));
+}
+
+function isMemeToken(token?: string): boolean {
+  return MEME_TOKENS.has(normalizeToken(token));
+}
+
+function isUnknownToken(token?: string): boolean {
+  const normalized = normalizeToken(token);
+  return Boolean(normalized && !COMMON_TOKENS.has(normalized) && !MEME_TOKENS.has(normalized));
+}
+
+function hasCommonToken(intent: DeFiIntent): boolean {
+  return isCommonToken(intent.tokenIn) || isCommonToken(intent.tokenOut);
+}
+
+function hasMemeToken(intent: DeFiIntent): boolean {
+  return isMemeToken(intent.tokenIn) || isMemeToken(intent.tokenOut);
+}
+
+function hasUnknownToken(intent: DeFiIntent): boolean {
+  return isUnknownToken(intent.tokenIn) || isUnknownToken(intent.tokenOut);
+}
+
+function areBothTokensCommon(intent: DeFiIntent): boolean {
+  return isCommonToken(intent.tokenIn) && (!intent.tokenOut || isCommonToken(intent.tokenOut));
+}
+
+function isCommonPair(intent: DeFiIntent): boolean {
+  const pair = `${normalizeToken(intent.tokenIn)}/${normalizeToken(intent.tokenOut)}`;
+  const reversePair = `${normalizeToken(intent.tokenOut)}/${normalizeToken(intent.tokenIn)}`;
+  return COMMON_PAIRS.has(pair) || COMMON_PAIRS.has(reversePair);
 }
 
 function buildAlternatives(route: RouteType): RouteType[] {
-  const all: RouteType[] = [
-    "STANDARD_ROUTE",
-    "PROTECTED_ROUTE",
-    "DELAYED_EXECUTION",
-    "SPLIT_ORDER",
-    "BLOCKED_UNSAFE"
-  ];
+  const all: RouteType[] = ["STANDARD_ROUTE", "PROTECTED_ROUTE", "DELAYED_EXECUTION", "SPLIT_ORDER", "BLOCKED_UNSAFE"];
   return all.filter((item) => item !== route).slice(0, 3);
 }
 

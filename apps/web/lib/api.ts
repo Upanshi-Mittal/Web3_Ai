@@ -33,6 +33,11 @@ export type IntentParseResponse = {
   reasoning: string[];
 };
 
+export type RiskAnalyzeResponse = {
+  analysis: RiskAnalysis;
+  agent: AgentResult<RiskAnalysis>;
+};
+
 export const api = {
   parseIntent(prompt: string) {
     return request<IntentParseResponse>("/api/intent", {
@@ -44,6 +49,12 @@ export const api = {
     return request<AgentRunResponse>("/agents/run", {
       method: "POST",
       body: JSON.stringify({ prompt })
+    });
+  },
+  analyzeRisk(intent: DeFiIntent) {
+    return request<RiskAnalyzeResponse>("/api/risk", {
+      method: "POST",
+      body: JSON.stringify({ intent })
     });
   },
   createReport(input: {

@@ -68,8 +68,9 @@ export const RiskAgent: Agent<RiskAnalysis> = {
       status: output.riskLevel === "Critical" ? "warning" : "completed",
       confidence: fixture ? 0.94 : 0.82,
       reasoning: [
-        "Calculated a 0-100 explainable score using the v0 weighted risk model.",
-        "MEV exposure is reported as a factor and route signal; it is not part of the v0 weighted score.",
+        "Calculated weighted risk score from slippage, liquidity, price impact, gas, token, and route complexity factors.",
+        "MEV exposure was estimated separately and shown as an explanatory factor.",
+        describeIntentRisk(parsedIntent),
         output.summary
       ],
       output,
@@ -77,6 +78,10 @@ export const RiskAgent: Agent<RiskAnalysis> = {
     };
   }
 };
+
+export async function runRiskAgent(intent: DeFiIntent): Promise<AgentResult<RiskAnalysis>> {
+  return RiskAgent.run({ prompt: "Analyze parsed DeFi intent", parsedIntent: intent });
+}
 
 export const RouteAgent: Agent<RouteRecommendation> = {
   name: "RouteAgent",
@@ -116,7 +121,7 @@ export const ReportAgent: Agent<SentinelReport> = {
       parsedIntent,
       riskScore: context.riskAnalysis.riskScore,
       riskLevel: context.riskAnalysis.riskLevel,
-      riskFactors: context.riskAnalysis.factors,
+      riskFactors: context.riskAnalysis.riskFactors,
       riskFactorExplanations: context.riskAnalysis.factorExplanations,
       recommendedRoute: context.routeRecommendation,
       modelVersion: MODEL_VERSION,
@@ -331,4 +336,12 @@ function normalizeChain(value: string): string {
 function requireIntent(context: AgentContext): DeFiIntent {
   if (!context.parsedIntent) throw new Error("Agent requires parsedIntent");
   return context.parsedIntent;
+}
+
+function describeIntentRisk(intent: DeFiIntent): string {
+  const pair = [intent.tokenIn, intent.tokenOut].filter(Boolean).join("/") || intent.action;
+  if (intent.constraints.maxSlippage) {
+    return `Detected ${pair} with ${intent.constraints.maxSlippage} max slippage from user constraints.`;
+  }
+  return `Detected ${pair} with ${intent.priority} priority.`;
 }

@@ -10,7 +10,6 @@ import {
   Loader2,
   Route,
   Save,
-  ShieldAlert,
   ShieldCheck
 } from "lucide-react";
 import Link from "next/link";
@@ -20,8 +19,11 @@ import type { AgentResult, DeFiIntent, ExecutionMode, RiskAnalysis, RouteRecomme
 import { sentinelReportRegistryAbi } from "@sentinelmesh/web3";
 import { IntentCard } from "@/components/intent/IntentCard";
 import { IntentInput, intentExamples } from "@/components/intent/IntentInput";
+import { RiskFactorCard } from "@/components/risk/RiskFactorCard";
+import { RiskSummary } from "@/components/risk/RiskSummary";
+import { TopRiskFactors } from "@/components/risk/TopRiskFactors";
 import { api, type AgentRunResponse } from "@/lib/api";
-import { cn, riskColor, shortHash } from "@/lib/format";
+import { cn, shortHash } from "@/lib/format";
 
 export function AppDashboard() {
   const [prompt, setPrompt] = useState(intentExamples[0]);
@@ -33,7 +35,9 @@ export function AppDashboard() {
   const [mode, setMode] = useState<ExecutionMode>("Simulation Only");
   const [network, setNetwork] = useState("Base Sepolia");
   const [error, setError] = useState<string | null>(null);
+  const [riskError, setRiskError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [analyzingRisk, setAnalyzingRisk] = useState(false);
   const [creatingReport, setCreatingReport] = useState(false);
   const { address, isConnected } = useAccount();
   const { writeContractAsync } = useWriteContract();
@@ -44,6 +48,7 @@ export function AppDashboard() {
   async function parseIntent(selectedPrompt = prompt) {
     setLoading(true);
     setError(null);
+    setRiskError(null);
     setReport(null);
     setRisk(null);
     setRoute(null);
@@ -68,21 +73,20 @@ export function AppDashboard() {
     }
   }
 
-  async function runAnalysis(selectedPrompt = prompt) {
-    setLoading(true);
-    setError(null);
+  async function analyzeRisk() {
+    if (!intent) return;
+    setAnalyzingRisk(true);
+    setRiskError(null);
     setReport(null);
     try {
-      const result: AgentRunResponse = await api.runAgents(selectedPrompt);
-      setPrompt(selectedPrompt);
-      setIntent(result.parsedIntent);
-      setRisk(result.riskAnalysis);
-      setRoute(result.routeRecommendation);
-      setTrace(result.agentTrace);
+      const result = await api.analyzeRisk(intent);
+      setRisk(result.analysis);
+      setRoute(null);
+      setTrace((currentTrace) => [...currentTrace.filter((entry) => entry.agentName !== "RiskAgent"), result.agent]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to run SentinelMesh agents");
+      setRiskError(err instanceof Error ? err.message : "Risk analysis failed. Please check the parsed intent and try again.");
     } finally {
-      setLoading(false);
+      setAnalyzingRisk(false);
     }
   }
 
@@ -126,11 +130,6 @@ export function AppDashboard() {
     }
   }
 
-  const scoreStyle = useMemo(() => {
-    if (!risk) return "border-white/10 text-slate-300";
-    return riskColor(risk.riskLevel);
-  }, [risk]);
-
   return (
     <main className="mx-auto grid max-w-7xl gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:px-8">
       <section className="space-y-5">
@@ -145,12 +144,12 @@ export function AppDashboard() {
 
           <IntentInput prompt={prompt} loading={loading} error={error} onPromptChange={setPrompt} onSubmit={parseIntent} />
           <button
-            onClick={() => runAnalysis()}
-            disabled={loading || !intent}
+            onClick={analyzeRisk}
+            disabled={loading || analyzingRisk || !intent}
             className="mt-3 inline-flex items-center gap-2 rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:border-violet/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <FileCheck2 size={15} />
-            Run full analysis after intent review
+            {analyzingRisk ? <Loader2 className="animate-spin" size={15} /> : <FileCheck2 size={15} />}
+            Analyze Risk
           </button>
         </div>
 
@@ -159,21 +158,7 @@ export function AppDashboard() {
           <AgentTimeline trace={trace} loading={loading} />
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-          <div className={cn("rounded-lg border bg-panel/92 p-5", scoreStyle)}>
-            <div className="mb-4 flex items-center justify-between">
-              <div className="text-sm font-medium text-slate-300">Risk score</div>
-              <ShieldAlert size={20} />
-            </div>
-            <div className="text-6xl font-semibold text-white">{risk?.riskScore ?? "--"}</div>
-            <div className="mt-3 text-sm font-semibold">{risk?.riskLevel ?? "Run analysis"}</div>
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full rounded-full bg-current" style={{ width: `${risk?.riskScore ?? 0}%` }} />
-            </div>
-            <p className="mt-4 text-sm leading-6 text-slate-400">{risk?.summary ?? "Risk factors will appear after the agents parse an intent."}</p>
-          </div>
-          <RiskFactorGrid risk={risk} />
-        </div>
+        <RiskAnalysisPanel risk={risk} loading={analyzingRisk} error={riskError} />
 
         <RoutePanel route={route} />
       </section>
@@ -275,18 +260,48 @@ function RiskFactorGrid({ risk }: { risk: RiskAnalysis | null }) {
               Risk factor placeholder
             </div>
           ))
-        : factors.map((factor) => (
-            <div key={factor.key} className="rounded-lg border border-white/10 bg-panel/92 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold text-white">{factor.label}</h3>
-                <span className="rounded-md border border-white/10 px-2 py-1 text-xs text-slate-300">{factor.score}/100</span>
-              </div>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-                <div className="h-full rounded-full bg-teal" style={{ width: `${factor.score}%` }} />
-              </div>
-              <p className="mt-3 text-xs leading-5 text-slate-400">{factor.explanation}</p>
-            </div>
-          ))}
+        : factors.map((factor) => <RiskFactorCard key={factor.key} label={factor.label} score={factor.score} explanation={factor.explanation} />)}
+    </div>
+  );
+}
+
+function RiskAnalysisPanel({ risk, loading, error }: { risk: RiskAnalysis | null; loading: boolean; error: string | null }) {
+  if (loading) {
+    return (
+      <div className="rounded-lg border border-white/10 bg-panel/92 p-6 text-sm text-slate-300">
+        <div className="flex items-center gap-2">
+          <Loader2 className="animate-spin text-teal" size={18} />
+          Analyzing slippage, liquidity, token, gas, price impact, route complexity, and MEV exposure...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg border border-danger/30 bg-danger/10 p-5 text-sm text-rose-200">
+        Risk analysis failed. Please check the parsed intent and try again.
+        <div className="mt-2 text-xs text-rose-200/80">{error}</div>
+      </div>
+    );
+  }
+
+  if (!risk) {
+    return (
+      <div className="rounded-lg border border-white/10 bg-panel/92 p-6 text-sm text-slate-400">
+        Parse an intent to analyze DeFi execution risk.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <RiskSummary analysis={risk} />
+      <TopRiskFactors analysis={risk} />
+      <section>
+        <h2 className="mb-3 font-semibold text-white">Full Risk Breakdown</h2>
+        <RiskFactorGrid risk={risk} />
+      </section>
     </div>
   );
 }

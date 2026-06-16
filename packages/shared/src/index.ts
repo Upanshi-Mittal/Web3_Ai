@@ -49,6 +49,10 @@ export const IntentPromptSchema = z.object({
     .max(1000, "Prompt must be 1000 characters or fewer")
 });
 
+export const DeFiIntentRequestSchema = z.object({
+  intent: DeFiIntentSchema
+});
+
 export type RiskFactors = {
   slippageRisk: number;
   liquidityRisk: number;
@@ -71,11 +75,74 @@ export type RiskLevel = "Low" | "Medium" | "High" | "Critical";
 export type RiskAnalysis = {
   riskScore: number;
   riskLevel: RiskLevel;
+  riskFactors: RiskFactors;
+  riskExplanations: Record<keyof RiskFactors, string>;
+  topFactors: RiskFactorExplanation[];
+  dataSource: "fixture" | "live" | "mixed";
+  riskEngineVersion: string;
+  summary: string;
   factors: RiskFactors;
   factorExplanations: RiskFactorExplanation[];
-  summary: string;
-  dataSource: "fixture" | "deterministic";
 };
+
+export const RiskAnalysisSchema = z.object({
+  riskScore: z.number().min(0).max(100),
+  riskLevel: z.enum(["Low", "Medium", "High", "Critical"]),
+  riskFactors: z.object({
+    slippageRisk: z.number().min(0).max(100),
+    liquidityRisk: z.number().min(0).max(100),
+    priceImpactRisk: z.number().min(0).max(100),
+    gasRisk: z.number().min(0).max(100),
+    tokenRisk: z.number().min(0).max(100),
+    routeComplexityRisk: z.number().min(0).max(100),
+    mevExposureRisk: z.number().min(0).max(100)
+  }),
+  riskExplanations: z.record(z.string()),
+  topFactors: z.array(
+    z.object({
+      key: z.enum([
+        "slippageRisk",
+        "liquidityRisk",
+        "priceImpactRisk",
+        "gasRisk",
+        "tokenRisk",
+        "routeComplexityRisk",
+        "mevExposureRisk"
+      ]),
+      label: z.string(),
+      score: z.number().min(0).max(100),
+      explanation: z.string()
+    })
+  ),
+  dataSource: z.enum(["fixture", "live", "mixed"]),
+  riskEngineVersion: z.string(),
+  summary: z.string(),
+  factors: z.object({
+    slippageRisk: z.number().min(0).max(100),
+    liquidityRisk: z.number().min(0).max(100),
+    priceImpactRisk: z.number().min(0).max(100),
+    gasRisk: z.number().min(0).max(100),
+    tokenRisk: z.number().min(0).max(100),
+    routeComplexityRisk: z.number().min(0).max(100),
+    mevExposureRisk: z.number().min(0).max(100)
+  }),
+  factorExplanations: z.array(
+    z.object({
+      key: z.enum([
+        "slippageRisk",
+        "liquidityRisk",
+        "priceImpactRisk",
+        "gasRisk",
+        "tokenRisk",
+        "routeComplexityRisk",
+        "mevExposureRisk"
+      ]),
+      label: z.string(),
+      score: z.number().min(0).max(100),
+      explanation: z.string()
+    })
+  )
+}) satisfies z.ZodType<RiskAnalysis>;
 
 export type RouteType =
   | "STANDARD_ROUTE"
@@ -125,11 +192,11 @@ export type FixtureScenario = {
 export const MODEL_VERSION = "sentinelmesh-risk-v0.1";
 
 export const RISK_FACTOR_LABELS: Record<keyof RiskFactors, string> = {
-  slippageRisk: "Slippage",
-  liquidityRisk: "Liquidity",
-  priceImpactRisk: "Price impact",
-  gasRisk: "Gas volatility",
-  tokenRisk: "Token safety",
-  routeComplexityRisk: "Route complexity",
-  mevExposureRisk: "MEV exposure"
+  slippageRisk: "Slippage Risk",
+  liquidityRisk: "Liquidity Risk",
+  priceImpactRisk: "Price Impact Risk",
+  gasRisk: "Gas Risk",
+  tokenRisk: "Token Risk",
+  routeComplexityRisk: "Route Complexity Risk",
+  mevExposureRisk: "MEV Exposure Risk"
 };

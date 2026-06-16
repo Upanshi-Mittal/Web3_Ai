@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { hashReportPayload, parseIntentFallback, recomputeReportHash, runAgents, runIntentAgent } from ".";
+import { hashReportPayload, parseIntentFallback, recomputeReportHash, runAgents, runIntentAgent, runRiskAgent } from ".";
 import { IntentPromptSchema, type SentinelReport } from "@sentinelmesh/shared";
 
 describe("intent parser fallback", () => {
@@ -95,6 +95,28 @@ describe("agent orchestration", () => {
     assert.equal(result.parsedIntent.action, "swap");
     assert.ok(result.riskAnalysis.riskScore >= 0);
     assert.ok(result.routeRecommendation.recommendedRoute);
+  });
+});
+
+describe("risk agent", () => {
+  it("returns completed status and structured risk output for valid intent", async () => {
+    const result = await runRiskAgent({
+      action: "swap",
+      tokenIn: "ETH",
+      tokenOut: "USDC",
+      amount: "0.2",
+      chain: "ethereum",
+      priority: "safety",
+      constraints: { maxSlippage: "0.5%" }
+    });
+
+    assert.equal(result.agentName, "RiskAgent");
+    assert.equal(result.status, "completed");
+    assert.ok(result.output.riskScore >= 0);
+    assert.ok(result.output.riskLevel);
+    assert.ok(result.output.riskFactors);
+    assert.ok(result.output.riskExplanations);
+    assert.equal(result.output.topFactors.length, 3);
   });
 });
 

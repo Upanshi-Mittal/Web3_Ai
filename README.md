@@ -99,6 +99,7 @@ Required endpoints are implemented:
 
 - `GET /health`
 - `POST /api/intent`
+- `POST /api/risk`
 - `POST /intent/parse`
 - `POST /risk/analyze`
 - `POST /route/recommend`
