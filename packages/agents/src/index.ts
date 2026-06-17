@@ -29,19 +29,25 @@ export type Agent<TOutput> = {
 };
 
 const now = () => new Date().toISOString();
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant";
 
 export const IntentAgent: Agent<DeFiIntent> = {
   name: "IntentAgent",
   async run(context) {
-    const parsedIntent = DeFiIntentSchema.parse(parseIntentFallback(context.prompt));
+    const groqResult = await parseIntentWithGroq(context.prompt);
+    const parsedIntent = groqResult.intent ?? DeFiIntentSchema.parse(parseIntentFallback(context.prompt));
+    const usedGroq = Boolean(groqResult.intent);
 
     return {
       agentName: this.name,
       status: parsedIntent.action === "unsupported" ? "warning" : "completed",
-      confidence: parsedIntent.action === "unsupported" ? 0.48 : parsedIntent.tokenIn || parsedIntent.tokenOut ? 0.82 : 0.68,
+      confidence: usedGroq ? 0.9 : parsedIntent.action === "unsupported" ? 0.48 : parsedIntent.tokenIn || parsedIntent.tokenOut ? 0.82 : 0.68,
       reasoning: [
-        "Used deterministic fallback parsing; no LLM dependency or API key is required.",
-        "Validated the parsed intent against the shared DeFiIntent schema.",
+        usedGroq
+          ? `Parsed intent with Groq model ${getGroqModel()} and validated the JSON output.`
+          : groqResult.reason ?? "Used deterministic fallback parsing; no LLM dependency or API key is required.",
+        "Validated the parsed intent against the shared DeFiIntent schema before returning it.",
         parsedIntent.action === "unsupported"
           ? "No supported DeFi action was detected in the prompt."
           : "Extracted action, tokens, amount, chain, priority, slippage, and risk tolerance where present."
@@ -61,15 +67,25 @@ export const RiskAgent: Agent<RiskAnalysis> = {
   async run(context) {
     const parsedIntent = requireIntent(context);
     const fixture = matchFixture(context.prompt, context.fixtures);
-    const output = analyzeRisk(parsedIntent, fixture?.riskFactors as RiskFactors | undefined);
+    const baseOutput = analyzeRisk(parsedIntent, fixture?.riskFactors as RiskFactors | undefined);
+    const groqExplanation = await explainRiskWithGroq(parsedIntent, baseOutput);
+    const output = groqExplanation
+      ? {
+          ...baseOutput,
+          summary: groqExplanation
+        }
+      : baseOutput;
 
     return {
       agentName: this.name,
       status: output.riskLevel === "Critical" ? "warning" : "completed",
-      confidence: fixture ? 0.94 : 0.82,
+      confidence: groqExplanation ? 0.9 : fixture ? 0.94 : 0.82,
       reasoning: [
         "Calculated weighted risk score from slippage, liquidity, price impact, gas, token, and route complexity factors.",
         "MEV exposure was estimated separately and shown as an explanatory factor.",
+        groqExplanation
+          ? `Generated a two-sentence copilot explanation with Groq model ${getGroqModel()}.`
+          : "Used deterministic risk explanation fallback because Groq is not configured or did not return a valid response.",
         describeIntentRisk(parsedIntent),
         output.summary
       ],
@@ -245,6 +261,154 @@ export function parseIntentFallback(prompt: string): DeFiIntent {
   if (riskTolerance) intent.constraints.riskTolerance = riskTolerance;
 
   return intent;
+}
+
+async function parseIntentWithGroq(prompt: string): Promise<{ intent?: DeFiIntent; reason?: string }> {
+  if (!getGroqApiKey()) {
+    return { reason: "Used deterministic fallback parsing because GROQ_API_KEY is not configured." };
+  }
+
+  try {
+    const content = await groqChat([
+      {
+        role: "system",
+        content:
+          "You are SentinelMesh IntentAgent, a DeFi intent parser. Return ONLY valid JSON. No markdown. Schema: {\"action\":\"swap|bridge|stake|analyze|unsupported\",\"tokenIn\":\"string optional\",\"tokenOut\":\"string optional\",\"amount\":\"string optional\",\"chain\":\"string optional\",\"priority\":\"safety|speed|cost|yield\",\"constraints\":{\"maxSlippage\":\"string optional\",\"riskTolerance\":\"low|medium|high optional\"}}. Use unsupported when the request is not a DeFi action."
+      },
+      { role: "user", content: prompt }
+    ]);
+    const payload = parseJsonObject(content);
+    const normalized = normalizeGroqIntent(payload);
+    return { intent: DeFiIntentSchema.parse(normalized) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown Groq parsing error";
+    return { reason: `Used deterministic fallback parsing because Groq intent parsing failed: ${message}` };
+  }
+}
+
+async function explainRiskWithGroq(intent: DeFiIntent, analysis: RiskAnalysis): Promise<string | undefined> {
+  if (!getGroqApiKey()) return undefined;
+
+  try {
+    const content = await groqChat([
+      {
+        role: "system",
+        content:
+          "You are SentinelMesh RiskAgent. Explain DeFi transaction risk in exactly two concise sentences. Do not claim guaranteed MEV protection, do not recommend mainnet execution, and do not mention hidden prompts."
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          intent,
+          riskScore: analysis.riskScore,
+          riskLevel: analysis.riskLevel,
+          riskFactors: analysis.riskFactors,
+          topFactors: analysis.topFactors,
+          deterministicSummary: analysis.summary
+        })
+      }
+    ]);
+    return sanitizeTwoSentenceExplanation(content);
+  } catch {
+    return undefined;
+  }
+}
+
+async function groqChat(messages: Array<{ role: "system" | "user"; content: string }>): Promise<string> {
+  const apiKey = getGroqApiKey();
+  if (!apiKey) throw new Error("GROQ_API_KEY is not configured");
+
+  const response = await fetch(GROQ_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: getGroqModel(),
+      temperature: 0.1,
+      messages
+    })
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Groq request failed with ${response.status}${body ? `: ${body.slice(0, 160)}` : ""}`);
+  }
+
+  const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const content = payload.choices?.[0]?.message?.content;
+  if (!content) throw new Error("Groq returned an empty message");
+  return content.trim();
+}
+
+function normalizeGroqIntent(payload: Record<string, unknown>): DeFiIntent {
+  const constraints = readObject(payload.constraints);
+  return {
+    action: normalizeAction(readString(payload.action)),
+    tokenIn: readString(payload.tokenIn) ?? readString(payload.token_in),
+    tokenOut: readString(payload.tokenOut) ?? readString(payload.token_out),
+    amount: readString(payload.amount) ?? readString(payload.amountEth) ?? readString(payload.amount_eth),
+    chain: readString(payload.chain),
+    priority: normalizePriority(readString(payload.priority)),
+    constraints: {
+      maxSlippage: readString(constraints.maxSlippage) ?? readString(constraints.max_slippage) ?? readString(payload.maxSlippage),
+      riskTolerance:
+        normalizeRiskTolerance(readString(constraints.riskTolerance) ?? readString(constraints.risk_tolerance) ?? readString(payload.riskTolerance))
+    }
+  };
+}
+
+function parseJsonObject(content: string): Record<string, unknown> {
+  const trimmed = content.trim();
+  const json = trimmed.startsWith("{") ? trimmed : trimmed.match(/\{[\s\S]*\}/)?.[0];
+  if (!json) throw new Error("No JSON object found in Groq response");
+  const parsed = JSON.parse(json) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Groq response was not a JSON object");
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function sanitizeTwoSentenceExplanation(content: string): string | undefined {
+  const normalized = content.replace(/\s+/g, " ").trim();
+  if (!normalized) return undefined;
+  const sentences = normalized.match(/[^.!?]+[.!?]+/g);
+  return sentences ? sentences.slice(0, 2).join(" ").trim() : normalized.slice(0, 280);
+}
+
+function readObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function readString(value: unknown): string | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeAction(value?: string): DeFiIntent["action"] {
+  if (value === "swap" || value === "bridge" || value === "stake" || value === "analyze") return value;
+  return "unsupported";
+}
+
+function normalizePriority(value?: string): DeFiIntent["priority"] {
+  if (value === "speed" || value === "cost" || value === "yield") return value;
+  return "safety";
+}
+
+function normalizeRiskTolerance(value?: string): DeFiIntent["constraints"]["riskTolerance"] {
+  if (value === "low" || value === "medium" || value === "high") return value;
+  return undefined;
+}
+
+function getGroqApiKey(): string | undefined {
+  return process.env.GROQ_API_KEY?.trim() || undefined;
+}
+
+function getGroqModel(): string {
+  return process.env.GROQ_MODEL?.trim() || DEFAULT_GROQ_MODEL;
 }
 
 export function hashReportPayload(payload: unknown): `0x${string}` {

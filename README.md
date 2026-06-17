@@ -60,7 +60,7 @@ data/fixtures
 - API: Node.js, Express, TypeScript
 - Smart contracts: Solidity, Foundry
 - Storage: local JSON file, replaceable later with Postgres/Supabase
-- AI/agents: deterministic agent abstraction with fixture fallbacks
+- AI/agents: optional Groq-backed intent/risk agents with deterministic fixture fallbacks
 - Network: Base Sepolia or Ethereum Sepolia testnet
 
 ## Setup
@@ -169,6 +169,8 @@ Important variables:
 - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`
 - `NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS`
 - `NEXT_PUBLIC_EXPLORER_BASE_URL`
+- `GROQ_API_KEY`
+- `GROQ_MODEL`
 - `BASE_SEPOLIA_RPC_URL`
 - `PRIVATE_KEY`
 
@@ -176,7 +178,7 @@ Never commit real private keys, seed phrases, or RPC secrets.
 
 ## Limitations
 
-- V0 uses deterministic parsing and fixture-backed risk data by default.
+- V0 uses Groq for intent parsing and risk explanation when `GROQ_API_KEY` is configured; otherwise it falls back to deterministic parsing and fixture-backed risk data.
 - Live DEX quotes and private relay integrations are future adapters.
 - Report verification checks local report hash equality with the supplied/on-chain report hash.
 - Testnet-only report anchoring. No swap execution path is implemented.

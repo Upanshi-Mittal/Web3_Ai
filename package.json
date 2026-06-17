@@ -2,7 +2,7 @@
   "name": "sentinelmesh",
   "private": true,
   "version": "0.1.0",
-  "packageManager": "pnpm@9.15.4",
+  "packageManager": "npm@10.8.2",
   "workspaces": [
     "apps/*",
     "packages/*"
