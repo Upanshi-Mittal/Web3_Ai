@@ -1,27 +1,34 @@
 "use client";
 
-import { ConnectButton } from "@rainbow-me/rainbowkit";
 import {
-  BadgeCheck,
   Bot,
   CheckCircle2,
   FileCheck2,
   Loader2,
-  Save,
 } from "lucide-react";
-import Link from "next/link";
 import { useState } from "react";
-import { useAccount, useWriteContract } from "wagmi";
+import { useAccount, useChainId, usePublicClient, useWriteContract } from "wagmi";
 import type { AgentResult, DeFiIntent, ExecutionMode, RiskAnalysis, RouteAnalysis, RouteRecommendation, RouteType, SentinelReport } from "@sentinelmesh/shared";
-import { sentinelReportRegistryAbi } from "@sentinelmesh/web3";
+import {
+  findNetworkByChainId,
+  findNetworkById,
+  getDefaultNetwork,
+  hydrateNetworkMetadata,
+  placeholderNetworks,
+  placeholderReportRegistryAdapter,
+  sentinelReportRegistryAbi,
+  type TransactionStateSnapshot
+} from "@sentinelmesh/web3";
 import { IntentCard } from "@/components/intent/IntentCard";
 import { IntentInput, intentExamples } from "@/components/intent/IntentInput";
 import { RiskFactorCard } from "@/components/risk/RiskFactorCard";
 import { RiskSummary } from "@/components/risk/RiskSummary";
 import { TopRiskFactors } from "@/components/risk/TopRiskFactors";
 import { RouteComparison } from "@/components/routes/RouteComparison";
+import { ReportCreationPanel } from "@/components/web3/ReportCreationPanel";
+import { WalletConnectionPanel } from "@/components/web3/WalletConnectionPanel";
 import { api } from "@/lib/api";
-import { cn, shortHash } from "@/lib/format";
+import { cn } from "@/lib/format";
 
 export function AppDashboard() {
   const [prompt, setPrompt] = useState(intentExamples[0]);
@@ -32,19 +39,28 @@ export function AppDashboard() {
   const [trace, setTrace] = useState<AgentResult[]>([]);
   const [report, setReport] = useState<SentinelReport | null>(null);
   const [mode, setMode] = useState<ExecutionMode>("Simulation Only");
-  const [network, setNetwork] = useState("Base Sepolia");
   const [error, setError] = useState<string | null>(null);
   const [riskError, setRiskError] = useState<string | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null);
+  const [txState, setTxState] = useState<TransactionStateSnapshot>({ state: "idle", label: "Ready", description: "No transaction has been requested." });
   const [loading, setLoading] = useState(false);
   const [analyzingRisk, setAnalyzingRisk] = useState(false);
   const [routing, setRouting] = useState(false);
   const [creatingReport, setCreatingReport] = useState(false);
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
 
-  const registryAddress = process.env.NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS as `0x${string}` | undefined;
-  const canAnchor = Boolean(registryAddress && isConnected && mode !== "Simulation Only");
+  const networks = hydrateNetworkMetadata(placeholderNetworks, {
+    registryAddress: process.env.NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS as `0x${string}` | undefined,
+    explorerTxUrlTemplate: process.env.NEXT_PUBLIC_EXPLORER_TX_URL_TEMPLATE ?? process.env.NEXT_PUBLIC_EXPLORER_BASE_URL,
+    explorerLabel: process.env.NEXT_PUBLIC_EXPLORER_LABEL
+  });
+  const activeNetwork = findNetworkByChainId(networks, chainId);
+  const selectedNetwork = activeNetwork ?? getDefaultNetwork(networks);
+  const selectedNetworkFromId = findNetworkById(networks, selectedNetwork.id);
+  const canAnchor = Boolean(isConnected && placeholderReportRegistryAdapter.canWrite(selectedNetworkFromId) && mode !== "Simulation Only");
 
   async function parseIntent(selectedPrompt = prompt) {
     setLoading(true);
@@ -52,6 +68,7 @@ export function AppDashboard() {
     setRiskError(null);
     setRouteError(null);
     setReport(null);
+    setTxState({ state: "idle", label: "Ready", description: "No transaction has been requested." });
     setRisk(null);
     setRouteAnalysis(null);
     setSelectedRouteId(null);
@@ -83,6 +100,7 @@ export function AppDashboard() {
     setRiskError(null);
     setRouteError(null);
     setReport(null);
+    setTxState({ state: "idle", label: "Ready", description: "No transaction has been requested." });
     setRouteAnalysis(null);
     setSelectedRouteId(null);
     try {
@@ -110,6 +128,7 @@ export function AppDashboard() {
     if (!intent || !risk || !routeAnalysis || !selectedRouteId) return;
     setCreatingReport(true);
     setError(null);
+    setTxState({ state: "preparing", label: "Preparing report", description: "Creating the local report payload and deterministic hash." });
     try {
       const selectedLegacyRoute = routeAnalysisToLegacyRecommendation(routeAnalysis, selectedRouteId);
       let created = await api.createReport({
@@ -124,24 +143,50 @@ export function AppDashboard() {
         userAddress: address
       });
 
-      if (canAnchor && registryAddress) {
+      if (canAnchor && selectedNetworkFromId.registryAddress) {
+        setTxState({ state: "awaiting-wallet", label: "Wallet confirmation", description: "Review the report-registry transaction in your wallet." });
+        const args = placeholderReportRegistryAdapter.buildCreateReportArgs({
+          registryAddress: selectedNetworkFromId.registryAddress,
+          reportHash: created.reportHash,
+          riskScore: created.riskScore,
+          recommendation: selectedLegacyRoute.recommendedRoute,
+          reportURI: created.reportURI
+        });
         const txHash = await writeContractAsync({
-          address: registryAddress,
+          address: selectedNetworkFromId.registryAddress,
           abi: sentinelReportRegistryAbi,
           functionName: "createReport",
-          args: [created.reportHash, BigInt(created.riskScore), selectedLegacyRoute.recommendedRoute, created.reportURI]
+          args
         });
+        setTxState({ state: "submitted", label: "Transaction submitted", description: "The wallet returned a transaction hash.", txHash });
+
+        if (publicClient) {
+          setTxState({ state: "confirming", label: "Confirming", description: "Waiting for the selected network to confirm the report transaction.", txHash });
+          await publicClient.waitForTransactionReceipt({ hash: txHash });
+        }
 
         const verified = await api.verifyReport(created.id, {
           onChainHash: created.reportHash,
           chainTxHash: txHash
         });
         created = verified.report;
+        setTxState({ state: "confirmed", label: "Confirmed", description: "The report hash was anchored and the local report is marked for verification.", txHash });
+      } else {
+        setTxState({
+          state: "skipped",
+          label: "Local report only",
+          description:
+            mode === "Simulation Only"
+              ? "Simulation mode created a local report without requesting a wallet transaction."
+              : "On-chain anchoring was skipped because the wallet or registry adapter metadata is not ready."
+        });
       }
 
       setReport(created);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate report");
+      const message = err instanceof Error ? err.message : "Failed to generate report";
+      setError(message);
+      setTxState({ state: "failed", label: "Failed", description: "The report creation flow failed.", error: message });
     } finally {
       setCreatingReport(false);
     }
@@ -156,7 +201,6 @@ export function AppDashboard() {
               <h1 className="text-2xl font-semibold text-white">Risk Copilot</h1>
               <p className="mt-1 text-sm text-slate-400">{"Ask -> Parse -> Analyze -> Recommend -> Verify -> Save -> Share"}</p>
             </div>
-            <ConnectButton />
           </div>
 
           <IntentInput prompt={prompt} loading={loading} error={error} onPromptChange={setPrompt} onSubmit={parseIntent} />
@@ -190,59 +234,24 @@ export function AppDashboard() {
       </section>
 
       <aside className="space-y-5">
-        <div className="rounded-lg border border-white/10 bg-panel/92 p-5">
-          <h2 className="font-semibold text-white">Product Settings</h2>
-          <label className="mt-4 block text-sm text-slate-400">Execution mode</label>
-          <select
-            value={mode}
-            onChange={(event) => setMode(event.target.value as ExecutionMode)}
-            className="mt-2 w-full rounded-md border border-white/10 bg-panel2 p-3 text-sm text-white"
-          >
-            <option>Simulation Only</option>
-            <option>Report On-chain</option>
-          </select>
-          <label className="mt-4 block text-sm text-slate-400">Network</label>
-          <select
-            value={network}
-            onChange={(event) => setNetwork(event.target.value)}
-            className="mt-2 w-full rounded-md border border-white/10 bg-panel2 p-3 text-sm text-white"
-          >
-            <option>Base Sepolia</option>
-            <option>Ethereum Sepolia</option>
-          </select>
-          <div className="mt-4 rounded-md border border-white/10 bg-slate-950/50 p-3 text-xs leading-5 text-slate-400">
-            {canAnchor
-              ? "Registry anchoring is ready for the connected wallet."
-              : "Simulation works without a wallet. Configure NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS to anchor reports on testnet."}
-          </div>
-        </div>
+        <WalletConnectionPanel
+          address={address}
+          connected={isConnected}
+          activeNetwork={isConnected ? activeNetwork : undefined}
+          selectedNetwork={selectedNetworkFromId}
+          adapterReady={placeholderReportRegistryAdapter.canWrite(selectedNetworkFromId)}
+        />
 
-        <div className="rounded-lg border border-white/10 bg-panel/92 p-5">
-          <h2 className="font-semibold text-white">Generate Report</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-400">
-            Creates a deterministic report hash and stores the report in local API storage. On-chain anchoring is optional and testnet-only.
-          </p>
-          <button
-            onClick={generateReport}
-            disabled={!intent || !risk || !routeAnalysis || !selectedRouteId || creatingReport}
-            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-violet px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {creatingReport ? <Loader2 className="animate-spin" size={17} /> : <Save size={17} />}
-            Generate Report
-          </button>
-          {report && (
-            <div className="mt-4 rounded-md border border-success/30 bg-success/10 p-3 text-sm text-emerald-100">
-              <div className="flex items-center gap-2 font-semibold">
-                <BadgeCheck size={18} />
-                Report saved
-              </div>
-              <div className="mt-2 text-xs text-emerald-200">{shortHash(report.reportHash)}</div>
-              <Link className="mt-3 inline-flex text-sm font-semibold text-white underline" href={`/reports/${report.id}`}>
-                Open verified detail page
-              </Link>
-            </div>
-          )}
-        </div>
+        <ReportCreationPanel
+          mode={mode}
+          selectedNetwork={selectedNetworkFromId}
+          canCreate={Boolean(intent && risk && routeAnalysis && selectedRouteId)}
+          creating={creatingReport}
+          report={report}
+          txState={txState}
+          onModeChange={setMode}
+          onCreate={generateReport}
+        />
       </aside>
     </main>
   );

@@ -4,7 +4,7 @@ import { AlertTriangle, BadgeCheck, CheckCircle2, ExternalLink, FileCheck2, Load
 import { useEffect, useState } from "react";
 import { usePublicClient } from "wagmi";
 import type { SentinelReport } from "@sentinelmesh/shared";
-import { getExplorerTxUrl, sentinelReportRegistryAbi } from "@sentinelmesh/web3";
+import { getDefaultNetwork, getExplorerTxUrl, hydrateNetworkMetadata, placeholderNetworks, sentinelReportRegistryAbi } from "@sentinelmesh/web3";
 import { api } from "@/lib/api";
 import { cn, riskColor, shortHash } from "@/lib/format";
 
@@ -15,6 +15,12 @@ export function ReportDetail({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const publicClient = usePublicClient();
   const registryAddress = process.env.NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS as `0x${string}` | undefined;
+  const [network] = hydrateNetworkMetadata(placeholderNetworks, {
+    registryAddress,
+    explorerTxUrlTemplate: process.env.NEXT_PUBLIC_EXPLORER_TX_URL_TEMPLATE ?? process.env.NEXT_PUBLIC_EXPLORER_BASE_URL,
+    explorerLabel: process.env.NEXT_PUBLIC_EXPLORER_LABEL
+  });
+  const reportNetwork = network ?? getDefaultNetwork(placeholderNetworks);
 
   useEffect(() => {
     api
@@ -55,7 +61,7 @@ export function ReportDetail({ id }: { id: string }) {
     return <Panel><AlertTriangle className="text-warning" /> Report not found.</Panel>;
   }
 
-  const explorerUrl = getExplorerTxUrl(report.chainTxHash, process.env.NEXT_PUBLIC_EXPLORER_BASE_URL);
+  const explorerUrl = getExplorerTxUrl(report.chainTxHash, reportNetwork.explorer?.txUrlTemplate);
 
   return (
     <div className="space-y-5">
