@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { hashReportPayload, parseIntentFallback, recomputeReportHash, runAgents, runIntentAgent, runRiskAgent } from ".";
+import { analyzeRisk } from "@sentinelmesh/risk-engine";
+import { buildRouteAnalysis, hashReportPayload, parseIntentFallback, recomputeReportHash, runAgents, runIntentAgent, runRiskAgent, runRouteAgent } from ".";
 import { IntentPromptSchema, type SentinelReport } from "@sentinelmesh/shared";
 
 describe("intent parser fallback", () => {
@@ -94,7 +95,8 @@ describe("agent orchestration", () => {
     assert.equal(result.agentTrace.length, 3);
     assert.equal(result.parsedIntent.action, "swap");
     assert.ok(result.riskAnalysis.riskScore >= 0);
-    assert.ok(result.routeRecommendation.recommendedRoute);
+    assert.ok(result.routeRecommendation.routes.length >= 1);
+    assert.ok(result.routeRecommendation.recommendedRouteId);
   });
 });
 
@@ -117,6 +119,77 @@ describe("risk agent", () => {
     assert.ok(result.output.riskFactors);
     assert.ok(result.output.riskExplanations);
     assert.equal(result.output.topFactors.length, 3);
+  });
+});
+
+describe("route agent", () => {
+  it("recommends a safe route for the core low-risk swap", async () => {
+    const intent = parseIntentFallback("Swap 0.2 ETH to USDC safely with low slippage");
+    const risk = analyzeRisk(intent);
+    const result = await runRouteAgent(intent, risk);
+
+    assert.equal(result.agentName, "RouteAgent");
+    assert.equal(result.status, "completed");
+    assert.ok(result.output.routes.length >= 3);
+    assert.ok(result.output.recommendedRouteId);
+    assert.equal(result.output.routes.find((route) => route.routeId === result.output.recommendedRouteId)?.decision, "recommended");
+  });
+
+  it("uses a guarded route for an acceptable medium-risk swap", () => {
+    const intent = parseIntentFallback("Swap 2 ETH to DAI with 1% slippage");
+    const risk = analyzeRisk(intent, {
+      slippageRisk: 45,
+      liquidityRisk: 35,
+      priceImpactRisk: 45,
+      gasRisk: 45,
+      tokenRisk: 25,
+      routeComplexityRisk: 20,
+      mevExposureRisk: 35
+    });
+    const routes = buildRouteAnalysis(intent, risk);
+
+    assert.ok(routes.recommendedRouteId);
+    assert.match(routes.recommendedRouteId ?? "", /protected|standard|split/);
+    assert.equal(routes.routes.find((route) => route.routeId === routes.recommendedRouteId)?.decision, "recommended");
+  });
+
+  it("does not recommend execution for a high-risk token swap", () => {
+    const intent = parseIntentFallback("Swap 10 ETH to PEPE as fast as possible with high slippage");
+    const risk = analyzeRisk(intent, {
+      slippageRisk: 90,
+      liquidityRisk: 88,
+      priceImpactRisk: 92,
+      gasRisk: 65,
+      tokenRisk: 85,
+      routeComplexityRisk: 60,
+      mevExposureRisk: 90
+    });
+    const routes = buildRouteAnalysis(intent, risk);
+
+    assert.equal(routes.recommendedRouteId, undefined);
+    assert.ok(routes.routes.every((route) => route.decision === "report-only"));
+    assert.ok(routes.decisionSummary.includes("does not suggest execution"));
+  });
+
+  it("builds bridge routes with a report-only fallback path", () => {
+    const intent = parseIntentFallback("Bridge 1 ETH from Ethereum to Base");
+    const risk = analyzeRisk(intent);
+    const routes = buildRouteAnalysis(intent, risk);
+
+    assert.ok(routes.routes.every((route) => route.action === "bridge"));
+    assert.ok(routes.routes.some((route) => route.routeId === "bridge-report-only"));
+    assert.ok(routes.routes.every((route) => route.destinationChain === "base"));
+  });
+
+  it("returns an unsupported fallback route without an execution recommendation", () => {
+    const intent = parseIntentFallback("What is the weather today?");
+    const risk = analyzeRisk(intent);
+    const routes = buildRouteAnalysis(intent, risk);
+
+    assert.equal(routes.recommendedRouteId, undefined);
+    assert.equal(routes.routes.length, 1);
+    assert.equal(routes.routes[0].decision, "fallback");
+    assert.equal(routes.routes[0].routeId, "unsupported-fallback");
   });
 });
 

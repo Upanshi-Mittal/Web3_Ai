@@ -2,42 +2,43 @@
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import {
-  AlertTriangle,
   BadgeCheck,
   Bot,
   CheckCircle2,
   FileCheck2,
   Loader2,
-  Route,
   Save,
-  ShieldCheck
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useAccount, useWriteContract } from "wagmi";
-import type { AgentResult, DeFiIntent, ExecutionMode, RiskAnalysis, RouteRecommendation, SentinelReport } from "@sentinelmesh/shared";
+import type { AgentResult, DeFiIntent, ExecutionMode, RiskAnalysis, RouteAnalysis, RouteRecommendation, RouteType, SentinelReport } from "@sentinelmesh/shared";
 import { sentinelReportRegistryAbi } from "@sentinelmesh/web3";
 import { IntentCard } from "@/components/intent/IntentCard";
 import { IntentInput, intentExamples } from "@/components/intent/IntentInput";
 import { RiskFactorCard } from "@/components/risk/RiskFactorCard";
 import { RiskSummary } from "@/components/risk/RiskSummary";
 import { TopRiskFactors } from "@/components/risk/TopRiskFactors";
-import { api, type AgentRunResponse } from "@/lib/api";
+import { RouteComparison } from "@/components/routes/RouteComparison";
+import { api } from "@/lib/api";
 import { cn, shortHash } from "@/lib/format";
 
 export function AppDashboard() {
   const [prompt, setPrompt] = useState(intentExamples[0]);
   const [intent, setIntent] = useState<DeFiIntent | null>(null);
   const [risk, setRisk] = useState<RiskAnalysis | null>(null);
-  const [route, setRoute] = useState<RouteRecommendation | null>(null);
+  const [routeAnalysis, setRouteAnalysis] = useState<RouteAnalysis | null>(null);
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [trace, setTrace] = useState<AgentResult[]>([]);
   const [report, setReport] = useState<SentinelReport | null>(null);
   const [mode, setMode] = useState<ExecutionMode>("Simulation Only");
   const [network, setNetwork] = useState("Base Sepolia");
   const [error, setError] = useState<string | null>(null);
   const [riskError, setRiskError] = useState<string | null>(null);
+  const [routeError, setRouteError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [analyzingRisk, setAnalyzingRisk] = useState(false);
+  const [routing, setRouting] = useState(false);
   const [creatingReport, setCreatingReport] = useState(false);
   const { address, isConnected } = useAccount();
   const { writeContractAsync } = useWriteContract();
@@ -49,9 +50,11 @@ export function AppDashboard() {
     setLoading(true);
     setError(null);
     setRiskError(null);
+    setRouteError(null);
     setReport(null);
     setRisk(null);
-    setRoute(null);
+    setRouteAnalysis(null);
+    setSelectedRouteId(null);
     try {
       const result = await api.parseIntent(selectedPrompt);
       setPrompt(selectedPrompt);
@@ -75,26 +78,40 @@ export function AppDashboard() {
 
   async function analyzeRisk() {
     if (!intent) return;
+    let phase: "risk" | "route" = "risk";
     setAnalyzingRisk(true);
     setRiskError(null);
+    setRouteError(null);
     setReport(null);
+    setRouteAnalysis(null);
+    setSelectedRouteId(null);
     try {
       const result = await api.analyzeRisk(intent);
       setRisk(result.analysis);
-      setRoute(null);
       setTrace((currentTrace) => [...currentTrace.filter((entry) => entry.agentName !== "RiskAgent"), result.agent]);
+      setAnalyzingRisk(false);
+      phase = "route";
+      setRouting(true);
+      const routeResult = await api.analyzeRoutes(intent, result.analysis);
+      setRouteAnalysis(routeResult.recommendation);
+      setSelectedRouteId(routeResult.recommendation.selectedRouteId ?? routeResult.recommendation.recommendedRouteId ?? routeResult.routes[0]?.routeId ?? null);
+      setTrace((currentTrace) => [...currentTrace.filter((entry) => entry.agentName !== "RouteAgent"), routeResult.agent]);
     } catch (err) {
-      setRiskError(err instanceof Error ? err.message : "Risk analysis failed. Please check the parsed intent and try again.");
+      const message = err instanceof Error ? err.message : "Risk analysis failed. Please check the parsed intent and try again.";
+      if (phase === "route") setRouteError(message);
+      else setRiskError(message);
     } finally {
       setAnalyzingRisk(false);
+      setRouting(false);
     }
   }
 
   async function generateReport() {
-    if (!intent || !risk || !route) return;
+    if (!intent || !risk || !routeAnalysis || !selectedRouteId) return;
     setCreatingReport(true);
     setError(null);
     try {
+      const selectedLegacyRoute = routeAnalysisToLegacyRecommendation(routeAnalysis, selectedRouteId);
       let created = await api.createReport({
         prompt,
         parsedIntent: intent,
@@ -102,7 +119,7 @@ export function AppDashboard() {
         riskLevel: risk.riskLevel,
         riskFactors: risk.factors,
         riskFactorExplanations: risk.factorExplanations,
-        recommendedRoute: route,
+        recommendedRoute: selectedLegacyRoute,
         agentTrace: trace,
         userAddress: address
       });
@@ -112,7 +129,7 @@ export function AppDashboard() {
           address: registryAddress,
           abi: sentinelReportRegistryAbi,
           functionName: "createReport",
-          args: [created.reportHash, BigInt(created.riskScore), created.recommendedRoute.recommendedRoute, created.reportURI]
+          args: [created.reportHash, BigInt(created.riskScore), selectedLegacyRoute.recommendedRoute, created.reportURI]
         });
 
         const verified = await api.verifyReport(created.id, {
@@ -154,13 +171,22 @@ export function AppDashboard() {
         </div>
 
         <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-          <IntentCard intent={intent} onChange={setIntent} />
+          <IntentCard
+            intent={intent}
+            onChange={(updatedIntent) => {
+              setIntent(updatedIntent);
+              setRisk(null);
+              setRouteAnalysis(null);
+              setSelectedRouteId(null);
+              setReport(null);
+            }}
+          />
           <AgentTimeline trace={trace} loading={loading} />
         </div>
 
         <RiskAnalysisPanel risk={risk} loading={analyzingRisk} error={riskError} />
 
-        <RoutePanel route={route} />
+        <RouteComparison routeAnalysis={routeAnalysis} selectedRouteId={selectedRouteId} loading={routing} error={routeError} onSelect={setSelectedRouteId} />
       </section>
 
       <aside className="space-y-5">
@@ -198,7 +224,7 @@ export function AppDashboard() {
           </p>
           <button
             onClick={generateReport}
-            disabled={!intent || !risk || !route || creatingReport}
+            disabled={!intent || !risk || !routeAnalysis || !selectedRouteId || creatingReport}
             className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-violet px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {creatingReport ? <Loader2 className="animate-spin" size={17} /> : <Save size={17} />}
@@ -306,44 +332,26 @@ function RiskAnalysisPanel({ risk, loading, error }: { risk: RiskAnalysis | null
   );
 }
 
-function RoutePanel({ route }: { route: RouteRecommendation | null }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-panel/92 p-5">
-      <div className="mb-4 flex items-center gap-2">
-        <Route className="text-violet" size={20} />
-        <h2 className="font-semibold text-white">Route Recommendation</h2>
-      </div>
-      {!route ? (
-        <p className="text-sm text-slate-400">Run an analysis to receive a route recommendation.</p>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-          <div className="rounded-lg border border-violet/30 bg-violet/10 p-4">
-            <div className="text-sm text-violet">Recommended route</div>
-            <div className="mt-2 text-xl font-semibold text-white">{route.recommendedRoute}</div>
-            <p className="mt-3 text-sm leading-6 text-slate-300">{route.explanation}</p>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <RouteList title="Pros" items={route.pros} icon={<ShieldCheck size={16} />} />
-            <RouteList title="Tradeoffs" items={route.cons} icon={<AlertTriangle size={16} />} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
+function routeAnalysisToLegacyRecommendation(routeAnalysis: RouteAnalysis, selectedRouteId: string): RouteRecommendation {
+  const selected = routeAnalysis.routes.find((route) => route.routeId === selectedRouteId) ?? routeAnalysis.routes[0];
+  const recommendedRoute = legacyRouteType(selected?.routeId ?? "", selected?.decision ?? "fallback", selected?.riskScore ?? 100);
+
+  return {
+    recommendedRoute,
+    alternatives: routeAnalysis.routes
+      .filter((route) => route.routeId !== selected?.routeId)
+      .map((route) => legacyRouteType(route.routeId, route.decision, route.riskScore))
+      .filter((route, index, routes) => routes.indexOf(route) === index),
+    pros: selected?.pros ?? [],
+    cons: selected?.cons ?? [],
+    explanation: selected?.recommendationReason ?? routeAnalysis.decisionSummary
+  };
 }
 
-function RouteList({ title, items, icon }: { title: string; items: string[]; icon: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-slate-950/40 p-4">
-      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
-        {icon}
-        {title}
-      </div>
-      <ul className="space-y-2 text-sm text-slate-400">
-        {items.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-    </div>
-  );
+function legacyRouteType(routeId: string, decision: string, riskScore: number): RouteType {
+  if (decision === "fallback" || riskScore > 85) return "BLOCKED_UNSAFE";
+  if (routeId.includes("split")) return "SPLIT_ORDER";
+  if (routeId.includes("protected")) return "PROTECTED_ROUTE";
+  if (decision === "report-only" || routeId.includes("report")) return "DELAYED_EXECUTION";
+  return "STANDARD_ROUTE";
 }

@@ -8,6 +8,10 @@ import {
   type FixtureScenario,
   type RiskAnalysis,
   type RiskFactors,
+  type RiskLevel,
+  type RouteAnalysis,
+  type RouteDecision,
+  type RouteOption,
   type RouteRecommendation,
   type SentinelReport
 } from "@sentinelmesh/shared";
@@ -16,6 +20,7 @@ export type AgentContext = {
   prompt: string;
   parsedIntent?: DeFiIntent;
   riskAnalysis?: RiskAnalysis;
+  routeAnalysis?: RouteAnalysis;
   routeRecommendation?: RouteRecommendation;
   userAddress?: string;
   reportURI?: string;
@@ -31,6 +36,7 @@ export type Agent<TOutput> = {
 const now = () => new Date().toISOString();
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant";
+export const ROUTE_ENGINE_VERSION = "sentinelmesh-route-v0.1";
 
 export const IntentAgent: Agent<DeFiIntent> = {
   name: "IntentAgent",
@@ -99,26 +105,32 @@ export async function runRiskAgent(intent: DeFiIntent): Promise<AgentResult<Risk
   return RiskAgent.run({ prompt: "Analyze parsed DeFi intent", parsedIntent: intent });
 }
 
-export const RouteAgent: Agent<RouteRecommendation> = {
+export const RouteAgent: Agent<RouteAnalysis> = {
   name: "RouteAgent",
   async run(context) {
+    const parsedIntent = requireIntent(context);
     if (!context.riskAnalysis) throw new Error("RouteAgent requires riskAnalysis");
-    const output = recommendRoute(context.riskAnalysis);
+    const output = buildRouteAnalysis(parsedIntent, context.riskAnalysis);
+    const recommendedRoute = output.routes.find((route) => route.routeId === output.recommendedRouteId);
 
     return {
       agentName: this.name,
-      status: output.recommendedRoute === "BLOCKED_UNSAFE" ? "warning" : "completed",
-      confidence: 0.9,
+      status: recommendedRoute ? "completed" : "warning",
+      confidence: parsedIntent.action === "unsupported" ? 0.72 : 0.9,
       reasoning: [
-        "Applied deterministic route decision rules from the v0 product spec.",
-        "The recommendation is advisory and does not execute swaps or claim guaranteed protection.",
-        output.explanation
+        "Generated deterministic fixture routes from parsed intent and risk output.",
+        "Applied transparent v0 route decision rules without executing a transaction.",
+        output.decisionSummary
       ],
       output,
       timestamp: now()
     };
   }
 };
+
+export async function runRouteAgent(intent: DeFiIntent, analysis: RiskAnalysis): Promise<AgentResult<RouteAnalysis>> {
+  return RouteAgent.run({ prompt: "Recommend execution routes", parsedIntent: intent, riskAnalysis: analysis });
+}
 
 export const ReportAgent: Agent<SentinelReport> = {
   name: "ReportAgent",
@@ -192,7 +204,7 @@ export const VerificationAgent: Agent<{ verified: boolean; localHash: string; on
 export async function runAgents(context: AgentContext): Promise<{
   parsedIntent: DeFiIntent;
   riskAnalysis: RiskAnalysis;
-  routeRecommendation: RouteRecommendation;
+  routeRecommendation: RouteAnalysis;
   agentTrace: AgentResult[];
 }> {
   const agentTrace: AgentResult[] = [];
@@ -222,6 +234,320 @@ export async function createReportFromContext(context: AgentContext): Promise<Se
   const routeRecommendation = context.routeRecommendation ?? recommendRoute(riskAnalysis);
   const reportResult = await ReportAgent.run({ ...context, parsedIntent, riskAnalysis, routeRecommendation });
   return reportResult.output;
+}
+
+export function buildRouteAnalysis(intent: DeFiIntent, analysis: RiskAnalysis): RouteAnalysis {
+  const baseRoutes =
+    intent.action === "unsupported"
+      ? buildUnsupportedRoutes(intent, analysis)
+      : intent.action === "bridge"
+        ? buildBridgeRoutes(intent, analysis)
+        : intent.action === "analyze"
+          ? buildAnalyzeRoutes(intent, analysis)
+          : intent.action === "stake"
+            ? buildStakeRoutes(intent, analysis)
+            : buildSwapRoutes(intent, analysis);
+  const routes = applyRouteDecisionRules(baseRoutes, intent, analysis);
+  const recommendedRouteId = routes.find((route) => route.isRecommended)?.routeId;
+
+  return {
+    routes,
+    recommendedRouteId,
+    selectedRouteId: recommendedRouteId ?? routes[0]?.routeId,
+    decisionSummary: buildRouteDecisionSummary(intent, analysis, routes, recommendedRouteId),
+    dataSource: "fixture",
+    routeEngineVersion: ROUTE_ENGINE_VERSION
+  };
+}
+
+function buildSwapRoutes(intent: DeFiIntent, analysis: RiskAnalysis): RouteOption[] {
+  const chain = intent.chain ?? "ethereum";
+  const tokenIn = intent.tokenIn ?? "UNKNOWN";
+  const tokenOut = intent.tokenOut ?? "UNKNOWN";
+  const liquidityConfidence = liquidityConfidenceFromRisk(analysis);
+  const slippage = slippageFromRisk(analysis, "standard");
+  const priceImpact = priceImpactFromRisk(analysis, "standard");
+
+  return [
+    createRoute({
+      routeId: "swap-standard-dex",
+      routeName: "Standard DEX Simulation",
+      action: "swap",
+      sourceChain: chain,
+      inputToken: tokenIn,
+      outputToken: tokenOut,
+      estimatedGas: gasEstimate(chain, "standard"),
+      estimatedTime: "~2 min",
+      estimatedSlippage: slippage,
+      estimatedPriceImpact: priceImpact,
+      liquidityConfidence,
+      routeComplexity: "low",
+      riskScore: analysis.riskScore,
+      riskLevel: analysis.riskLevel,
+      pros: ["Fastest simple swap path", "Lowest route complexity", "Good fit for common liquid pairs"],
+      cons: ["No execution protection is implied", "Higher exposure if slippage or token risk rises"],
+      recommendationReason: "Best only when the overall risk score is low and liquidity confidence is strong.",
+      supportedExecutionModes: ["simulation", "report-on-chain", "testnet"]
+    }),
+    createRoute({
+      routeId: "swap-protected-review",
+      routeName: "Protected Route Simulation",
+      action: "swap",
+      sourceChain: chain,
+      inputToken: tokenIn,
+      outputToken: tokenOut,
+      estimatedGas: gasEstimate(chain, "protected"),
+      estimatedTime: "~3 min",
+      estimatedSlippage: slippageFromRisk(analysis, "protected"),
+      estimatedPriceImpact: priceImpactFromRisk(analysis, "protected"),
+      liquidityConfidence: Math.min(100, liquidityConfidence + 8),
+      routeComplexity: "medium",
+      riskScore: clampRouteRisk(analysis.riskScore - 7),
+      riskLevel: routeRiskLevel(clampRouteRisk(analysis.riskScore - 7), analysis.riskLevel),
+      pros: ["Adds route review before execution", "Better fit for medium-risk swaps", "Keeps report generation available"],
+      cons: ["Slightly higher estimated gas", "Still a simulation in v0, not guaranteed MEV prevention"],
+      recommendationReason: "Recommended when extra route review improves confidence and liquidity, slippage, and price impact remain acceptable.",
+      supportedExecutionModes: ["simulation", "report-on-chain", "testnet"]
+    }),
+    createRoute({
+      routeId: "swap-split-order",
+      routeName: "Split Order Simulation",
+      action: "swap",
+      sourceChain: chain,
+      inputToken: tokenIn,
+      outputToken: tokenOut,
+      estimatedGas: gasEstimate(chain, "split"),
+      estimatedTime: "~6 min",
+      estimatedSlippage: slippageFromRisk(analysis, "split"),
+      estimatedPriceImpact: priceImpactFromRisk(analysis, "split"),
+      liquidityConfidence: Math.min(100, liquidityConfidence + 5),
+      routeComplexity: "high",
+      riskScore: clampRouteRisk(analysis.riskScore - 4),
+      riskLevel: routeRiskLevel(clampRouteRisk(analysis.riskScore - 4), analysis.riskLevel),
+      pros: ["Can reduce price impact for larger trades", "Useful when a single pool is thin"],
+      cons: ["More complex route", "Longer execution window can add timing risk"],
+      recommendationReason: "Useful for larger or thinner-liquidity swaps, but only when risk is not high.",
+      supportedExecutionModes: ["simulation", "report-on-chain"]
+    })
+  ];
+}
+
+function buildBridgeRoutes(intent: DeFiIntent, analysis: RiskAnalysis): RouteOption[] {
+  const sourceChain = intent.chain ?? "ethereum";
+  const destinationChain = sourceChain === "base" ? "ethereum" : "base";
+  const tokenIn = intent.tokenIn ?? "ETH";
+  const confidence = Math.max(20, liquidityConfidenceFromRisk(analysis) - 15);
+
+  return [
+    createRoute({
+      routeId: "bridge-risk-review",
+      routeName: "Bridge Risk Review",
+      action: "bridge",
+      sourceChain,
+      destinationChain,
+      inputToken: tokenIn,
+      outputToken: tokenIn,
+      estimatedGas: gasEstimate(sourceChain, "bridge"),
+      estimatedTime: "~12 min",
+      estimatedSlippage: slippageFromRisk(analysis, "bridge"),
+      estimatedPriceImpact: priceImpactFromRisk(analysis, "bridge"),
+      liquidityConfidence: confidence,
+      routeComplexity: "high",
+      riskScore: Math.max(analysis.riskScore, 58),
+      riskLevel: analysis.riskLevel,
+      pros: ["Models cross-chain route assumptions", "Keeps report generation available before any transaction"],
+      cons: ["Bridge execution is not automated in v0", "Cross-chain finality and liquidity add uncertainty"],
+      recommendationReason: "Bridge requests should be reviewed with simulation/report-only unless risk is clearly low.",
+      supportedExecutionModes: ["simulation", "report-on-chain"]
+    }),
+    createRoute({
+      routeId: "bridge-report-only",
+      routeName: "Report-Only Bridge Assessment",
+      action: "bridge",
+      sourceChain,
+      destinationChain,
+      inputToken: tokenIn,
+      outputToken: tokenIn,
+      estimatedGas: "0 ETH execution gas",
+      estimatedTime: "~1 min",
+      estimatedSlippage: "0.00%",
+      estimatedPriceImpact: "0.00%",
+      liquidityConfidence: confidence,
+      routeComplexity: "medium",
+      riskScore: analysis.riskScore,
+      riskLevel: analysis.riskLevel,
+      pros: ["Safest v0 handling for bridge uncertainty", "Produces a verifiable local/on-chain risk report"],
+      cons: ["Does not execute a bridge transaction", "User still needs a separate bridge app"],
+      recommendationReason: "Preferred when bridge complexity or risk is above the low-risk band.",
+      supportedExecutionModes: ["simulation", "report-on-chain"]
+    })
+  ];
+}
+
+function buildAnalyzeRoutes(intent: DeFiIntent, analysis: RiskAnalysis): RouteOption[] {
+  return [
+    createRoute({
+      routeId: "analysis-report-only",
+      routeName: "Risk Report Only",
+      action: "analyze",
+      sourceChain: intent.chain ?? "ethereum",
+      inputToken: intent.tokenIn ?? "UNKNOWN",
+      outputToken: intent.tokenOut,
+      estimatedGas: "0 ETH execution gas",
+      estimatedTime: "~1 min",
+      estimatedSlippage: "0.00%",
+      estimatedPriceImpact: "0.00%",
+      liquidityConfidence: liquidityConfidenceFromRisk(analysis),
+      routeComplexity: "low",
+      riskScore: analysis.riskScore,
+      riskLevel: analysis.riskLevel,
+      pros: ["No execution path is suggested", "Clear fit for user requests that only ask for analysis"],
+      cons: ["No executable route is prepared", "Future wallet action must be reviewed separately"],
+      recommendationReason: "Analyze-only prompts should produce a report, not a transaction recommendation.",
+      supportedExecutionModes: ["simulation", "report-on-chain"]
+    })
+  ];
+}
+
+function buildStakeRoutes(intent: DeFiIntent, analysis: RiskAnalysis): RouteOption[] {
+  return [
+    createRoute({
+      routeId: "stake-report-only",
+      routeName: "Staking Risk Review",
+      action: "stake",
+      sourceChain: intent.chain ?? "ethereum",
+      inputToken: intent.tokenIn ?? "UNKNOWN",
+      estimatedGas: gasEstimate(intent.chain ?? "ethereum", "protected"),
+      estimatedTime: "~4 min",
+      estimatedSlippage: "0.00%",
+      estimatedPriceImpact: "0.00%",
+      liquidityConfidence: Math.max(30, liquidityConfidenceFromRisk(analysis) - 10),
+      routeComplexity: "medium",
+      riskScore: analysis.riskScore,
+      riskLevel: analysis.riskLevel,
+      pros: ["Reviews staking assumptions before wallet action", "Keeps v0 within report/simulation scope"],
+      cons: ["Protocol-specific staking execution is not implemented", "Yield and lockup assumptions need user review"],
+      recommendationReason: "Staking is supported as risk intelligence first; execution adapters are future work.",
+      supportedExecutionModes: ["simulation", "report-on-chain"]
+    })
+  ];
+}
+
+function buildUnsupportedRoutes(intent: DeFiIntent, analysis: RiskAnalysis): RouteOption[] {
+  return [
+    createRoute({
+      routeId: "unsupported-fallback",
+      routeName: "Unsupported Intent Fallback",
+      action: "unsupported",
+      sourceChain: intent.chain ?? "unknown",
+      inputToken: intent.tokenIn ?? "UNKNOWN",
+      outputToken: intent.tokenOut,
+      estimatedGas: "0 ETH execution gas",
+      estimatedTime: "~1 min",
+      estimatedSlippage: "N/A",
+      estimatedPriceImpact: "N/A",
+      liquidityConfidence: 0,
+      routeComplexity: "critical",
+      riskScore: Math.max(analysis.riskScore, 90),
+      riskLevel: "Critical",
+      pros: ["Prevents unsupported intent from being treated as executable", "Keeps the user in a safe report-only flow"],
+      cons: ["No route can be recommended", "User must rewrite the prompt as a supported DeFi action"],
+      recommendationReason: "SentinelMesh v0 only supports risk intelligence for known DeFi actions.",
+      supportedExecutionModes: ["simulation", "report-on-chain"]
+    })
+  ];
+}
+
+function createRoute(route: Omit<RouteOption, "decision" | "isRecommended">): RouteOption {
+  return {
+    ...route,
+    decision: "available",
+    isRecommended: false
+  };
+}
+
+function applyRouteDecisionRules(routes: RouteOption[], intent: DeFiIntent, analysis: RiskAnalysis): RouteOption[] {
+  if (intent.action === "unsupported") {
+    return routes.map((route) => ({ ...route, decision: "fallback", isRecommended: false }));
+  }
+
+  if (analysis.riskLevel === "High" || analysis.riskLevel === "Critical" || analysis.riskScore > 70) {
+    return routes.map((route) => ({
+      ...route,
+      decision: "report-only",
+      isRecommended: false,
+      supportedExecutionModes: route.supportedExecutionModes.filter((mode) => mode !== "testnet")
+    }));
+  }
+
+  const recommended =
+    analysis.riskLevel === "Low"
+      ? [...routes].sort((a, b) => b.liquidityConfidence - a.liquidityConfidence || a.riskScore - b.riskScore)[0]
+      : routes.find((route) => route.routeId.includes("protected") && route.liquidityConfidence >= 55 && parseRoutePercent(route.estimatedSlippage) <= 2 && parseRoutePercent(route.estimatedPriceImpact) <= 3) ??
+        routes.find((route) => route.liquidityConfidence >= 55 && parseRoutePercent(route.estimatedSlippage) <= 2 && parseRoutePercent(route.estimatedPriceImpact) <= 3);
+
+  return routes.map((route) => {
+    const isRecommended = Boolean(recommended && route.routeId === recommended.routeId);
+    const decision: RouteDecision = isRecommended ? "recommended" : analysis.riskLevel === "Medium" ? "available" : route.decision;
+    return { ...route, decision, isRecommended };
+  });
+}
+
+function buildRouteDecisionSummary(intent: DeFiIntent, analysis: RiskAnalysis, routes: RouteOption[], recommendedRouteId?: string): string {
+  if (intent.action === "unsupported") {
+    return "Unsupported or invalid intent: no execution route is recommended. Use the fallback to create a report and rewrite the prompt.";
+  }
+  if (!recommendedRouteId) {
+    return `${analysis.riskLevel} risk detected: SentinelMesh recommends simulation/report-only review and does not suggest execution for this route set.`;
+  }
+  const route = routes.find((item) => item.routeId === recommendedRouteId);
+  if (analysis.riskLevel === "Low") {
+    return `Low risk: ${route?.routeName ?? "the safest route"} is recommended because it has the strongest liquidity confidence and manageable execution assumptions.`;
+  }
+  return `Medium risk: ${route?.routeName ?? "a guarded route"} is recommended because liquidity, slippage, and price impact stay within the v0 acceptance thresholds.`;
+}
+
+function liquidityConfidenceFromRisk(analysis: RiskAnalysis): number {
+  return Math.max(0, Math.min(100, Math.round(100 - analysis.riskFactors.liquidityRisk * 0.85)));
+}
+
+function slippageFromRisk(analysis: RiskAnalysis, mode: "standard" | "protected" | "split" | "bridge"): string {
+  const base = analysis.riskFactors.slippageRisk <= 20 ? 0.3 : analysis.riskFactors.slippageRisk <= 45 ? 0.8 : analysis.riskFactors.slippageRisk <= 70 ? 1.8 : 4.5;
+  const multiplier = mode === "protected" ? 0.75 : mode === "split" ? 0.65 : mode === "bridge" ? 1.2 : 1;
+  return `${Math.max(0.05, base * multiplier).toFixed(2)}%`;
+}
+
+function priceImpactFromRisk(analysis: RiskAnalysis, mode: "standard" | "protected" | "split" | "bridge"): string {
+  const base = analysis.riskFactors.priceImpactRisk <= 20 ? 0.2 : analysis.riskFactors.priceImpactRisk <= 45 ? 0.9 : analysis.riskFactors.priceImpactRisk <= 70 ? 2.6 : 7.5;
+  const multiplier = mode === "protected" ? 0.8 : mode === "split" ? 0.55 : mode === "bridge" ? 1.1 : 1;
+  return `${Math.max(0.05, base * multiplier).toFixed(2)}%`;
+}
+
+function gasEstimate(chain: string, mode: "standard" | "protected" | "split" | "bridge"): string {
+  const normalized = chain.toLowerCase();
+  const lowCostChain = normalized.includes("base") || normalized.includes("arbitrum") || normalized.includes("polygon");
+  const base = lowCostChain ? 0.0006 : 0.0025;
+  const multiplier = mode === "protected" ? 1.25 : mode === "split" ? 1.7 : mode === "bridge" ? 2.2 : 1;
+  return `${(base * multiplier).toFixed(4)} ETH`;
+}
+
+function clampRouteRisk(score: number): number {
+  if (!Number.isFinite(score)) return 0;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function routeRiskLevel(score: number, fallback: RiskLevel): RiskLevel {
+  if (!Number.isFinite(score)) return fallback;
+  if (score <= 30) return "Low";
+  if (score <= 60) return "Medium";
+  if (score <= 80) return "High";
+  return "Critical";
+}
+
+function parseRoutePercent(value: string): number {
+  if (value === "N/A") return Number.POSITIVE_INFINITY;
+  const parsed = Number.parseFloat(value.replace("%", ""));
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 }
 
 export function parseIntentFallback(prompt: string): DeFiIntent {

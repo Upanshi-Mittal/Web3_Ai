@@ -11,11 +11,20 @@ import {
   VerificationAgent,
   recomputeReportHash,
   runAgents,
+  runRouteAgent,
   runRiskAgent,
   type AgentContext
 } from "@sentinelmesh/agents";
 import { analyzeRisk, recommendRoute } from "@sentinelmesh/risk-engine";
-import { DeFiIntentRequestSchema, IntentPromptSchema, type DeFiIntent, type FixtureScenario, type SentinelReport } from "@sentinelmesh/shared";
+import {
+  DeFiIntentRequestSchema,
+  IntentPromptSchema,
+  RouteAgentRequestSchema,
+  type DeFiIntent,
+  type FixtureScenario,
+  type RiskAnalysis,
+  type SentinelReport
+} from "@sentinelmesh/shared";
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
@@ -78,6 +87,20 @@ app.post("/api/risk", async (req, res, next) => {
     const agent = await runRiskAgent(intent);
     res.json({
       analysis: agent.output,
+      agent
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/routes", async (req, res, next) => {
+  try {
+    const { intent, analysis } = RouteAgentRequestSchema.parse(req.body);
+    const agent = await runRouteAgent(intent, analysis);
+    res.json({
+      recommendation: agent.output,
+      routes: agent.output.routes,
       agent
     });
   } catch (error) {
@@ -214,7 +237,7 @@ app.listen(port, () => {
   console.log(`SentinelMesh API listening on http://localhost:${port}`);
 });
 
-async function contextFromBody(body: { prompt?: string; parsedIntent?: DeFiIntent; riskAnalysis?: ReturnType<typeof analyzeRisk> }) {
+async function contextFromBody(body: { prompt?: string; parsedIntent?: DeFiIntent; riskAnalysis?: RiskAnalysis }) {
   const prompt = body.prompt ?? "Analyze DeFi intent";
   return {
     prompt,

@@ -1,4 +1,4 @@
-import type { AgentResult, DeFiIntent, RiskAnalysis, RouteRecommendation, SentinelReport } from "@sentinelmesh/shared";
+import type { AgentResult, DeFiIntent, RiskAnalysis, RouteAnalysis, RouteOption, RouteRecommendation, SentinelReport } from "@sentinelmesh/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -23,7 +23,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export type AgentRunResponse = {
   parsedIntent: DeFiIntent;
   riskAnalysis: RiskAnalysis;
-  routeRecommendation: RouteRecommendation;
+  routeRecommendation: RouteAnalysis;
   agentTrace: AgentResult[];
 };
 
@@ -36,6 +36,12 @@ export type IntentParseResponse = {
 export type RiskAnalyzeResponse = {
   analysis: RiskAnalysis;
   agent: AgentResult<RiskAnalysis>;
+};
+
+export type RouteAnalyzeResponse = {
+  recommendation: RouteAnalysis;
+  routes: RouteOption[];
+  agent: AgentResult<RouteAnalysis>;
 };
 
 export const api = {
@@ -55,6 +61,12 @@ export const api = {
     return request<RiskAnalyzeResponse>("/api/risk", {
       method: "POST",
       body: JSON.stringify({ intent })
+    });
+  },
+  analyzeRoutes(intent: DeFiIntent, analysis: RiskAnalysis) {
+    return request<RouteAnalyzeResponse>("/api/routes", {
+      method: "POST",
+      body: JSON.stringify({ intent, analysis })
     });
   },
   createReport(input: {
