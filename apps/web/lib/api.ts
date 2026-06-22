@@ -93,7 +93,7 @@ export const api = {
     return request<SentinelReport>(`/reports/${id}`);
   },
   verifyReport(id: string, body?: { onChainHash?: string; chainTxHash?: string }) {
-    return request<{ report: SentinelReport; output: { verified: boolean } }>(`/reports/${id}/verify`, {
+    return request<{ report: SentinelReport; output: { verified: boolean }; verificationSource: string; registryReadError?: string }>(`/reports/${id}/verify`, {
       method: "POST",
       body: JSON.stringify(body ?? {})
     });

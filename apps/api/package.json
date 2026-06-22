@@ -13,9 +13,11 @@
     "@sentinelmesh/agents": "*",
     "@sentinelmesh/risk-engine": "*",
     "@sentinelmesh/shared": "*",
+    "@sentinelmesh/web3": "*",
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "viem": "^2.31.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

@@ -1,9 +1,10 @@
 import cors from "cors";
 import express from "express";
 import morgan from "morgan";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createPublicClient, http, isAddress, isHash, type Chain } from "viem";
 import {
   IntentAgent,
   RiskAgent,
@@ -16,6 +17,7 @@ import {
   type AgentContext
 } from "@sentinelmesh/agents";
 import { analyzeRisk, recommendRoute } from "@sentinelmesh/risk-engine";
+import { sentinelReportRegistryAbi, supportedChains } from "@sentinelmesh/web3";
 import {
   DeFiIntentRequestSchema,
   IntentPromptSchema,
@@ -32,6 +34,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../..");
 const reportsPath = path.resolve(repoRoot, process.env.REPORTS_DB_PATH ?? "data/reports.json");
 const fixturesPath = path.resolve(repoRoot, "data/fixtures/scenarios.json");
+const allowClientSuppliedOnChainHash = process.env.ALLOW_CLIENT_SUPPLIED_ONCHAIN_HASH === "true";
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
@@ -208,18 +211,33 @@ app.post("/reports/:id/verify", async (req, res, next) => {
     if (index === -1) return res.status(404).json({ error: "Report not found" });
 
     const report = reports[index];
-    const onChainHash = req.body?.onChainHash;
+    const localHash = recomputeReportHash(report);
+    let onChainHash: `0x${string}` | undefined;
+    let verificationSource: "registry" | "client-supplied" | "none" = "none";
+    let registryReadError: string | undefined;
+
+    try {
+      onChainHash = await readOnChainReportHash(report);
+      verificationSource = "registry";
+    } catch (error) {
+      registryReadError = error instanceof Error ? error.message : "Unable to read report registry";
+      if (allowClientSuppliedOnChainHash && isHash(req.body?.onChainHash)) {
+        onChainHash = req.body.onChainHash;
+        verificationSource = "client-supplied";
+      }
+    }
+
     const result = await VerificationAgent.run({ prompt: report.originalPrompt, report, onChainHash } as AgentContext & {
       report: SentinelReport;
-      onChainHash: string;
+      onChainHash?: `0x${string}`;
     });
     if (req.body?.chainTxHash) {
       report.chainTxHash = req.body.chainTxHash;
     }
-    report.verificationStatus = result.output.verified ? "verified" : onChainHash ? "mismatch" : "local-only";
+    report.verificationStatus = localHash.toLowerCase() === report.reportHash.toLowerCase() && result.output.verified ? "verified" : onChainHash ? "mismatch" : "local-only";
     reports[index] = report;
     await writeReports(reports);
-    return res.json({ ...result, report });
+    return res.json({ ...result, report, verificationSource, registryReadError });
   } catch (error) {
     next(error);
   }
@@ -260,7 +278,8 @@ async function loadFixtures(): Promise<FixtureScenario[]> {
 async function readReports(): Promise<SentinelReport[]> {
   try {
     const raw = await readFile(reportsPath, "utf8");
-    return JSON.parse(raw) as SentinelReport[];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as SentinelReport[]) : [];
   } catch {
     return [];
   }
@@ -268,9 +287,52 @@ async function readReports(): Promise<SentinelReport[]> {
 
 async function writeReports(reports: SentinelReport[]) {
   await mkdir(path.dirname(reportsPath), { recursive: true });
-  await writeFile(reportsPath, `${JSON.stringify(reports, null, 2)}\n`, "utf8");
+  const tmpPath = `${reportsPath}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tmpPath, `${JSON.stringify(reports, null, 2)}\n`, "utf8");
+  await rename(tmpPath, reportsPath);
 }
 
 function isZodError(error: unknown): error is { issues: Array<{ message: string }> } {
   return Boolean(error && typeof error === "object" && "issues" in error && Array.isArray((error as { issues?: unknown }).issues));
+}
+
+async function readOnChainReportHash(report: SentinelReport): Promise<`0x${string}`> {
+  const registryAddress = getRegistryAddress();
+  const rpcUrl = getRegistryRpcUrl();
+  const chain = getRegistryChain();
+
+  if (!registryAddress) throw new Error("REPORT_REGISTRY_ADDRESS or NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS is not configured");
+  if (!rpcUrl) throw new Error("REPORT_REGISTRY_RPC_URL, BASE_SEPOLIA_RPC_URL, or SEPOLIA_RPC_URL is not configured");
+  if (!report.userAddress || !isAddress(report.userAddress)) throw new Error("Report does not include a valid wallet address");
+
+  const client = createPublicClient({
+    chain,
+    transport: http(rpcUrl)
+  });
+  const userReports = await client.readContract({
+    address: registryAddress,
+    abi: sentinelReportRegistryAbi,
+    functionName: "getUserReports",
+    args: [report.userAddress]
+  });
+  const match = [...userReports].reverse().find((item) => {
+    return item.reportURI === report.reportURI || item.reportHash.toLowerCase() === report.reportHash.toLowerCase();
+  });
+
+  if (!match) throw new Error("No matching report found in SentinelReportRegistry for this wallet");
+  return match.reportHash;
+}
+
+function getRegistryAddress(): `0x${string}` | undefined {
+  const value = process.env.REPORT_REGISTRY_ADDRESS ?? process.env.NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS;
+  return value && isAddress(value) ? value : undefined;
+}
+
+function getRegistryRpcUrl(): string | undefined {
+  return process.env.REPORT_REGISTRY_RPC_URL ?? process.env.BASE_SEPOLIA_RPC_URL ?? process.env.SEPOLIA_RPC_URL;
+}
+
+function getRegistryChain(): Chain {
+  const chainId = Number(process.env.REPORT_REGISTRY_CHAIN_ID ?? process.env.NEXT_PUBLIC_CHAIN_ID ?? 84532);
+  return supportedChains.find((chain) => chain.id === chainId) ?? supportedChains[0];
 }

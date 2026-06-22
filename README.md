@@ -132,10 +132,15 @@ forge script script/DeploySentinelReportRegistry.s.sol \
 After deployment, set:
 
 ```bash
+REPORT_REGISTRY_ADDRESS=0x...
+REPORT_REGISTRY_CHAIN_ID=84532
+REPORT_REGISTRY_RPC_URL=https://...
 NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS=0x...
 NEXT_PUBLIC_CHAIN_ID=84532
-NEXT_PUBLIC_EXPLORER_BASE_URL=https://sepolia.basescan.org
+NEXT_PUBLIC_EXPLORER_TX_URL_TEMPLATE=https://sepolia.basescan.org/tx/{txHash}
 ```
+
+See `docs/deployment.md` for the full API, frontend, and contract deployment checklist.
 
 ## Demo Scenarios
 
@@ -168,9 +173,11 @@ Important variables:
 - `NEXT_PUBLIC_API_URL`
 - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`
 - `NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS`
-- `NEXT_PUBLIC_EXPLORER_BASE_URL`
+- `NEXT_PUBLIC_EXPLORER_TX_URL_TEMPLATE`
 - `GROQ_API_KEY`
 - `GROQ_MODEL`
+- `REPORT_REGISTRY_ADDRESS`
+- `REPORT_REGISTRY_RPC_URL`
 - `BASE_SEPOLIA_RPC_URL`
 - `PRIVATE_KEY`
 
@@ -180,7 +187,7 @@ Never commit real private keys, seed phrases, or RPC secrets.
 
 - V0 uses Groq for intent parsing and risk explanation when `GROQ_API_KEY` is configured; otherwise it falls back to deterministic parsing and fixture-backed risk data.
 - Live DEX quotes and private relay integrations are future adapters.
-- Report verification checks local report hash equality with the supplied/on-chain report hash.
+- Report verification checks the local report hash against the registry when API RPC metadata is configured. Local development can still run without RPC metadata.
 - Testnet-only report anchoring. No swap execution path is implemented.
 - The registry stores report metadata; it does not custody funds or execute swaps.
 
