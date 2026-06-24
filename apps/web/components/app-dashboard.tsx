@@ -172,6 +172,8 @@ export function AppDashboard() {
         created = verified.report;
         setTxState({ state: "confirmed", label: "Confirmed", description: "The report hash was anchored and the local report is marked for verification.", txHash });
       } else {
+        const verified = await api.verifyReport(created.id);
+        created = verified.report;
         setTxState({
           state: "skipped",
           label: "Local report only",
@@ -182,6 +184,7 @@ export function AppDashboard() {
         });
       }
 
+      setTrace(created.agentTrace);
       setReport(created);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to generate report";

@@ -235,6 +235,7 @@ app.post("/reports/:id/verify", async (req, res, next) => {
       report.chainTxHash = req.body.chainTxHash;
     }
     report.verificationStatus = localHash.toLowerCase() === report.reportHash.toLowerCase() && result.output.verified ? "verified" : onChainHash ? "mismatch" : "local-only";
+    report.agentTrace = [...report.agentTrace.filter((entry) => entry.agentName !== "VerificationAgent"), result];
     reports[index] = report;
     await writeReports(reports);
     return res.json({ ...result, report, verificationSource, registryReadError });
