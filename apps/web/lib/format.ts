@@ -6,10 +6,10 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function riskColor(level: RiskLevel | string) {
-  if (level === "Low") return "text-success border-success/30 bg-success/10";
-  if (level === "Medium") return "text-warning border-warning/30 bg-warning/10";
-  if (level === "High") return "text-orange-300 border-orange-300/30 bg-orange-400/10";
-  return "text-danger border-danger/30 bg-danger/10";
+  if (level === "Low") return "text-success border-success/25";
+  if (level === "Medium") return "text-warning border-warning/25";
+  if (level === "High") return "text-orange-600 border-orange-300/40";
+  return "text-danger border-danger/25";
 }
 
 export function shortHash(hash?: string) {

@@ -10,18 +10,18 @@ export function RouteCard({ route, selected, onSelect }: { route: RouteOption; s
       type="button"
       onClick={() => onSelect(route.routeId)}
       className={cn(
-        "h-full rounded-lg border bg-slate-950/35 p-4 text-left transition hover:border-violet/50",
-        selected ? "border-violet/60 shadow-glow" : "border-white/10",
-        route.isRecommended && "bg-violet/10"
+        "h-full rounded-lg border bg-white p-4 text-left transition hover:-translate-y-0.5 hover:border-violet/40 hover:shadow-lift",
+        selected ? "border-violet/60 ring-2 ring-violet/10" : "border-border",
+        route.isRecommended && "bg-violet/[0.035]"
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-white">
+          <div className="flex items-center gap-2 text-ink">
             {selected ? <Check size={17} className="text-violet" /> : <MousePointer2 size={17} className="text-slate-500" />}
             <h3 className="text-sm font-semibold">{route.routeName}</h3>
           </div>
-          <p className="mt-2 text-xs uppercase tracking-wide text-slate-500">
+          <p className="mt-2 text-xs font-medium text-muted">
             {route.inputToken}
             {route.outputToken ? ` -> ${route.outputToken}` : ""} on {route.sourceChain}
             {route.destinationChain ? ` -> ${route.destinationChain}` : ""}
@@ -39,7 +39,7 @@ export function RouteCard({ route, selected, onSelect }: { route: RouteOption; s
         <Metric icon={<AlertTriangle size={14} />} label="Impact" value={route.estimatedPriceImpact} />
       </div>
 
-      <p className="mt-4 text-sm leading-6 text-slate-300">{route.recommendationReason}</p>
+      <p className="mt-4 text-sm leading-6 text-muted">{route.recommendationReason}</p>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <RouteList title="Pros" items={route.pros} />
@@ -48,7 +48,7 @@ export function RouteCard({ route, selected, onSelect }: { route: RouteOption; s
 
       <div className="mt-4 flex flex-wrap gap-2">
         {route.supportedExecutionModes.map((mode) => (
-          <span key={mode} className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] uppercase tracking-wide text-slate-400">
+          <span key={mode} className="rounded-md border border-border bg-panel2 px-2 py-1 text-[11px] font-medium text-muted">
             {mode}
           </span>
         ))}
@@ -59,12 +59,12 @@ export function RouteCard({ route, selected, onSelect }: { route: RouteOption; s
 
 function Metric({ icon, label, value, className }: { icon: ReactNode; label: string; value: string; className?: string }) {
   return (
-    <div className={cn("rounded-md border border-white/10 bg-panel2/70 p-2 text-slate-300", className)}>
-      <div className="flex items-center gap-1 text-[11px] text-slate-500">
+    <div className={cn("rounded-md border border-border bg-panel2 p-2 text-muted", className)}>
+      <div className="flex items-center gap-1 text-[11px] text-muted">
         {icon}
         {label}
       </div>
-      <div className="mt-1 truncate font-semibold text-white">{value}</div>
+      <div className="mt-1 truncate font-semibold text-ink">{value}</div>
     </div>
   );
 }
@@ -72,8 +72,8 @@ function Metric({ icon, label, value, className }: { icon: ReactNode; label: str
 function RouteList({ title, items }: { title: string; items: string[] }) {
   return (
     <div>
-      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</div>
-      <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-400">
+      <div className="text-xs font-semibold text-muted">{title}</div>
+      <ul className="mt-2 space-y-1 text-xs leading-5 text-muted">
         {items.map((item) => (
           <li key={item}>{item}</li>
         ))}

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, BadgeCheck, Clock, FileText, Loader2, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, BadgeCheck, Clock, FileText, Loader2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { SentinelReport } from "@sentinelmesh/shared";
@@ -45,7 +45,7 @@ export function ReportsList() {
         <Link
           key={report.id}
           href={`/reports/${report.id}`}
-          className="rounded-lg border border-white/10 bg-panel/92 p-5 transition hover:border-teal/35 hover:bg-panel"
+          className="surface rounded-lg p-5 transition hover:-translate-y-0.5 hover:border-teal/35 hover:shadow-lift"
         >
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -53,13 +53,13 @@ export function ReportsList() {
                 <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", riskColor(report.riskLevel))}>
                   {report.riskLevel} {report.riskScore}/100
                 </span>
-                <span className="rounded-md border border-white/10 px-2 py-1 text-xs text-slate-300">
+                <span className="rounded-md border border-violet/15 bg-violet/5 px-2 py-1 text-xs text-violet">
                   {report.recommendedRoute.recommendedRoute}
                 </span>
                 <Status status={report.verificationStatus} />
               </div>
-              <h2 className="mt-3 text-lg font-semibold text-white">{report.originalPrompt}</h2>
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+              <h2 className="mt-3 text-lg font-semibold text-ink">{report.originalPrompt}</h2>
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
                 <span className="inline-flex items-center gap-1">
                   <Clock size={14} />
                   {new Date(report.createdAt).toLocaleString()}
@@ -67,7 +67,7 @@ export function ReportsList() {
                 <span>{shortHash(report.reportHash)}</span>
               </div>
             </div>
-            <ShieldCheck className="text-teal" size={22} />
+            <ArrowUpRight className="text-teal" size={20} />
           </div>
         </Link>
       ))}
@@ -81,7 +81,7 @@ function Status({ status }: { status: SentinelReport["verificationStatus"] }) {
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs",
-        verified ? "border-success/30 bg-success/10 text-success" : "border-white/10 bg-white/[0.04] text-slate-300"
+        verified ? "border-success/20 bg-emerald-50 text-success" : "border-border bg-panel2 text-muted"
       )}
     >
       <BadgeCheck size={13} />
@@ -104,12 +104,12 @@ function State({
   tone?: "danger";
 }) {
   return (
-    <div className={cn("rounded-lg border bg-panel/92 p-8 text-center", tone === "danger" ? "border-danger/30" : "border-white/10")}>
-      <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-teal">
+    <div className={cn("surface rounded-lg p-8 text-center", tone === "danger" && "border-danger/30")}>
+      <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-md border border-border bg-emerald-50 text-teal">
         {icon}
       </div>
-      <h2 className="mt-4 font-semibold text-white">{title}</h2>
-      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-400">{body}</p>
+      <h2 className="mt-4 font-semibold text-ink">{title}</h2>
+      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">{body}</p>
       {action}
     </div>
   );

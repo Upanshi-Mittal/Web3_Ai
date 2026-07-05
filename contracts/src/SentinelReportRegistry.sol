@@ -12,6 +12,7 @@ contract SentinelReportRegistry {
     }
 
     mapping(address user => Report[] reports) private userReports;
+    mapping(address user => mapping(bytes32 reportHash => bool created)) private reportExists;
 
     event ReportCreated(
         address indexed user,
@@ -26,6 +27,7 @@ contract SentinelReportRegistry {
     error RiskScoreOutOfRange();
     error EmptyRecommendation();
     error EmptyReportURI();
+    error DuplicateReport();
 
     function createReport(
         bytes32 reportHash,
@@ -37,7 +39,9 @@ contract SentinelReportRegistry {
         if (riskScore > 100) revert RiskScoreOutOfRange();
         if (bytes(recommendation).length == 0) revert EmptyRecommendation();
         if (bytes(reportURI).length == 0) revert EmptyReportURI();
+        if (reportExists[msg.sender][reportHash]) revert DuplicateReport();
 
+        reportExists[msg.sender][reportHash] = true;
         Report memory report = Report({
             user: msg.sender,
             reportHash: reportHash,

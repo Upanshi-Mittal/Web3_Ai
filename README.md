@@ -10,6 +10,8 @@ Swap 0.2 ETH to USDC safely with low slippage.
 
 SentinelMesh parses the intent, runs explainable risk agents, recommends a safer route, generates a deterministic report hash, optionally stores that hash in a testnet registry, and shows report history with verification status.
 
+For supported swap pairs, risk analysis also includes read-only live pool evidence such as liquidity, 24-hour volume, price movement, and pool age. External market failures fall back to deterministic policy factors.
+
 ## Problem
 
 DeFi users are asked to sign complex transactions without a clear, verifiable risk trail. SentinelMesh adds a risk intelligence and verification layer before execution. V0 does not custody funds, execute swaps, or claim guaranteed MEV protection.
@@ -30,8 +32,8 @@ apps/web
 
 apps/api
   Express API
-  Local JSON report storage
-  Agent orchestration endpoints
+  Postgres or serialized local JSON report storage
+  Agent orchestration, SIWE, live market evidence, and verification endpoints
 
 packages/shared
   Product types and schemas
@@ -57,9 +59,11 @@ data/fixtures
 
 - Frontend: Next.js App Router, TypeScript, Tailwind
 - Wallet/Web3: RainbowKit, wagmi, viem
+- Authentication: EIP-4361 SIWE with one-time nonces and signed HTTP-only sessions
 - API: Node.js, Express, TypeScript
 - Smart contracts: Solidity, Foundry
-- Storage: local JSON file, replaceable later with Postgres/Supabase
+- Storage: Postgres in hosted environments, serialized local JSON fallback
+- Quote evidence: optional server-side 0x AllowanceHolder quote plus read-only RPC simulation
 - AI/agents: optional Groq-backed intent/risk agents with deterministic fixture fallbacks
 - Network: Base Sepolia or Ethereum Sepolia testnet
 
@@ -98,8 +102,14 @@ npm run typecheck
 Required endpoints are implemented:
 
 - `GET /health`
+- `GET /ready`
+- `GET /auth/nonce`
+- `POST /auth/verify`
+- `GET /auth/session`
+- `POST /auth/logout`
 - `POST /api/intent`
 - `POST /api/risk`
+- `POST /api/quote`
 - `POST /intent/parse`
 - `POST /risk/analyze`
 - `POST /route/recommend`
@@ -109,7 +119,7 @@ Required endpoints are implemented:
 - `GET /reports/:id`
 - `POST /reports/:id/verify`
 
-Local reports are stored at `data/reports.json`.
+Local reports are stored at `data/reports.json`. Set `DATABASE_URL` to use the production Postgres repository; the API creates the required table and indexes idempotently.
 
 ## Contracts
 
@@ -170,12 +180,21 @@ See `.env.example`.
 
 Important variables:
 
+- `ALLOWED_ORIGINS`
+- `API_RATE_LIMIT_PER_MINUTE`
+- `AUTH_ALLOWED_DOMAINS`
+- `SESSION_SECRET`
 - `NEXT_PUBLIC_API_URL`
 - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`
 - `NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS`
 - `NEXT_PUBLIC_EXPLORER_TX_URL_TEMPLATE`
 - `GROQ_API_KEY`
 - `GROQ_MODEL`
+- `DATABASE_URL`
+- `DATABASE_SSL`
+- `ZEROX_API_KEY`
+- `ETHEREUM_MAINNET_RPC_URL`
+- `BASE_MAINNET_RPC_URL`
 - `REPORT_REGISTRY_ADDRESS`
 - `REPORT_REGISTRY_RPC_URL`
 - `BASE_SEPOLIA_RPC_URL`
@@ -186,16 +205,21 @@ Never commit real private keys, seed phrases, or RPC secrets.
 ## Limitations
 
 - V0 uses Groq for intent parsing and risk explanation when `GROQ_API_KEY` is configured; otherwise it falls back to deterministic parsing and fixture-backed risk data.
-- Live DEX quotes and private relay integrations are future adapters.
+- Local JSON storage is reliable for a single API instance. Hosted deployments should set `DATABASE_URL` so all instances share Postgres.
+- The optional 0x adapter is a read-only mainnet quote preview for allowlisted token pairs. It never returns calldata to the browser or broadcasts a transaction.
 - Report verification checks the local report hash against the registry when API RPC metadata is configured. Local development can still run without RPC metadata.
+- Wallet-owned report creation requires a matching authenticated SIWE session. Public report viewing remains shareable.
+- Report scores and recommendations are recomputed by the API. Client-supplied risk fields are rejected.
+- Wallet-owned reports are filtered from other users' history; direct report links remain shareable.
+- DEX Screener evidence is read-only and never treated as an executable route guarantee.
+- JSON persistence is serialized behind a repository interface so concurrent writes cannot overwrite reports; Postgres remains the deployment target for horizontal scaling.
+- The registry rejects zero hashes, invalid scores, empty metadata, and duplicate hashes from the same user.
 - Testnet-only report anchoring. No swap execution path is implemented.
 - The registry stores report metadata; it does not custody funds or execute swaps.
 
 ## Roadmap
 
-- Add live quote adapters with fixture fallback.
-- Add Supabase/Postgres report storage.
-- Read report hashes directly from the registry in VerificationAgent.
+- Persist signed quote evidence in report payloads after provider-specific normalization.
 - Add explorer-indexed report history by wallet.
 - Add protected route adapter integrations without claiming guaranteed MEV prevention.
 - Add end-to-end browser tests for the full demo flow.

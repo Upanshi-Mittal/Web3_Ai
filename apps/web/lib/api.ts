@@ -1,4 +1,4 @@
-import type { AgentResult, DeFiIntent, RiskAnalysis, RouteAnalysis, RouteOption, RouteRecommendation, SentinelReport } from "@sentinelmesh/shared";
+import type { AgentResult, DeFiIntent, QuotePreview, RiskAnalysis, RouteAnalysis, RouteOption, SentinelReport } from "@sentinelmesh/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -9,7 +9,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       "Content-Type": "application/json",
       ...init?.headers
     },
-    cache: "no-store"
+    cache: "no-store",
+    credentials: "include"
   });
 
   if (!response.ok) {
@@ -44,7 +45,29 @@ export type RouteAnalyzeResponse = {
   agent: AgentResult<RouteAnalysis>;
 };
 
+export type AuthUser = {
+  address: `0x${string}`;
+  chainId: number;
+  issuedAt: number;
+  expiresAt: number;
+};
+
 export const api = {
+  getAuthNonce() {
+    return request<{ nonce: string }>("/auth/nonce");
+  },
+  verifyAuth(message: string, signature: string) {
+    return request<{ authenticated: true; user: AuthUser }>("/auth/verify", {
+      method: "POST",
+      body: JSON.stringify({ message, signature })
+    });
+  },
+  getAuthSession() {
+    return request<{ authenticated: boolean; user?: AuthUser }>("/auth/session");
+  },
+  logout() {
+    return request<{ authenticated: false }>("/auth/logout", { method: "POST", body: "{}" });
+  },
   parseIntent(prompt: string) {
     return request<IntentParseResponse>("/api/intent", {
       method: "POST",
@@ -69,17 +92,17 @@ export const api = {
       body: JSON.stringify({ intent, analysis })
     });
   },
+  getQuotePreview(intent: DeFiIntent, takerAddress?: string) {
+    return request<QuotePreview>("/api/quote", {
+      method: "POST",
+      body: JSON.stringify({ intent, takerAddress })
+    });
+  },
   createReport(input: {
     prompt: string;
     parsedIntent: DeFiIntent;
-    riskScore: number;
-    riskLevel: string;
-    riskFactors: unknown;
-    riskFactorExplanations: unknown;
-    recommendedRoute: RouteRecommendation;
-    agentTrace: AgentResult[];
+    selectedRouteId: string;
     userAddress?: string;
-    chainTxHash?: string;
   }) {
     return request<SentinelReport>("/reports", {
       method: "POST",
@@ -93,7 +116,7 @@ export const api = {
     return request<SentinelReport>(`/reports/${id}`);
   },
   verifyReport(id: string, body?: { onChainHash?: string; chainTxHash?: string }) {
-    return request<{ report: SentinelReport; output: { verified: boolean }; verificationSource: string; registryReadError?: string }>(`/reports/${id}/verify`, {
+    return request<{ report: SentinelReport; output: { verified: boolean }; verificationSource: string; registryReadError?: string; transactionVerified: boolean }>(`/reports/${id}/verify`, {
       method: "POST",
       body: JSON.stringify(body ?? {})
     });

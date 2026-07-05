@@ -3,21 +3,25 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(45, 212, 191, 0.14), transparent 32rem),
-    radial-gradient(circle at top right, rgba(167, 139, 250, 0.13), transparent 34rem),
-    #060913;
-  color: #e5edf7;
+    linear-gradient(180deg, rgba(213, 241, 222, 0.88) 0, rgba(238, 248, 241, 0) 26rem),
+    #eef8f1;
+  color: #102a21;
+  font-feature-settings: "ss01" 1, "cv02" 1;
 }
 
 button,
@@ -27,9 +31,37 @@ textarea {
   font: inherit;
 }
 
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(19, 138, 97, 0.22);
+  outline-offset: 2px;
+}
+
 .mesh-grid {
   background-image:
-    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
-  background-size: 32px 32px;
+    linear-gradient(rgba(31, 106, 76, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(31, 106, 76, 0.045) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.surface {
+  border: 1px solid #d7e7dc;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 1px 2px rgba(16, 42, 33, 0.04), 0 16px 44px rgba(32, 93, 68, 0.07);
+}
+
+.eyebrow {
+  color: #138a61;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }

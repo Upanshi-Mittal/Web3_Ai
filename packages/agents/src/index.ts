@@ -151,6 +151,7 @@ export const ReportAgent: Agent<SentinelReport> = {
       riskLevel: context.riskAnalysis.riskLevel,
       riskFactors: context.riskAnalysis.riskFactors,
       riskFactorExplanations: context.riskAnalysis.factorExplanations,
+      marketEvidence: context.riskAnalysis.marketEvidence,
       recommendedRoute: context.routeRecommendation,
       modelVersion: MODEL_VERSION,
       reportURI,
