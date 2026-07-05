@@ -1,24 +1,31 @@
 services:
   - type: web
     name: sentinelmesh-api
-    runtime: node
-    plan: free
-    rootDir: .
-    buildCommand: npm install && npm run build -w @sentinelmesh/api
-    startCommand: npm run start -w @sentinelmesh/api
-    healthCheckPath: /health
+    runtime: docker
+    dockerfilePath: ./Dockerfile.api
+    healthCheckPath: /ready
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: "4000"
-      - key: REPORTS_DB_PATH
-        value: data/reports.json
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: AUTH_ALLOWED_DOMAINS
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sentinelmesh-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: require
+      - key: GROQ_API_KEY
+        sync: false
       - key: GROQ_MODEL
         value: llama-3.1-8b-instant
-      - key: ALLOW_CLIENT_SUPPLIED_ONCHAIN_HASH
-        value: "false"
-      - key: GROQ_API_KEY
+      - key: ZEROX_API_KEY
         sync: false
       - key: REPORT_REGISTRY_ADDRESS
         sync: false
@@ -26,3 +33,10 @@ services:
         value: "84532"
       - key: REPORT_REGISTRY_RPC_URL
         sync: false
+      - key: ALLOW_CLIENT_SUPPLIED_ONCHAIN_HASH
+        value: "false"
+
+databases:
+  - name: sentinelmesh-db
+    databaseName: sentinelmesh
+    user: sentinelmesh

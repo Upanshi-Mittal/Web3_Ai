@@ -28,7 +28,7 @@ export type DeFiIntent = {
   };
 };
 
-export const DeFiIntentSchema : z.ZodType<DeFiIntent> = z.object({
+export const DeFiIntentSchema = z.object({
   action: z.enum(["swap", "bridge", "stake", "analyze", "unsupported"]),
   tokenIn: z.string().optional(),
   tokenOut: z.string().optional(),
@@ -39,7 +39,7 @@ export const DeFiIntentSchema : z.ZodType<DeFiIntent> = z.object({
     maxSlippage: z.string().optional(),
     riskTolerance: z.enum(["low", "medium", "high"]).optional()
   })
-});
+}) satisfies z.ZodType<DeFiIntent>;
 
 export const IntentPromptSchema = z.object({
   prompt: z
@@ -72,6 +72,21 @@ export type RiskFactorExplanation = {
 
 export type RiskLevel = "Low" | "Medium" | "High" | "Critical";
 
+export type MarketEvidence = {
+  source: "dexscreener" | "fixture";
+  status: "live" | "fallback" | "unavailable";
+  chain: string;
+  pair: string;
+  dex?: string;
+  liquidityUsd?: number;
+  volume24hUsd?: number;
+  priceChange24h?: number;
+  pairAgeDays?: number;
+  url?: string;
+  observedAt: string;
+  notes: string[];
+};
+
 export type RiskAnalysis = {
   riskScore: number;
   riskLevel: RiskLevel;
@@ -83,9 +98,10 @@ export type RiskAnalysis = {
   summary: string;
   factors: RiskFactors;
   factorExplanations: RiskFactorExplanation[];
+  marketEvidence?: MarketEvidence;
 };
 
-export const RiskAnalysisSchema :z.ZodType<RiskAnalysis> = z.object({
+export const RiskAnalysisSchema = z.object({
   riskScore: z.number().min(0).max(100),
   riskLevel: z.enum(["Low", "Medium", "High", "Critical"]),
   riskFactors: z.object({
@@ -141,8 +157,24 @@ export const RiskAnalysisSchema :z.ZodType<RiskAnalysis> = z.object({
       score: z.number().min(0).max(100),
       explanation: z.string()
     })
-  )
-});
+  ),
+  marketEvidence: z
+    .object({
+      source: z.enum(["dexscreener", "fixture"]),
+      status: z.enum(["live", "fallback", "unavailable"]),
+      chain: z.string(),
+      pair: z.string(),
+      dex: z.string().optional(),
+      liquidityUsd: z.number().nonnegative().optional(),
+      volume24hUsd: z.number().nonnegative().optional(),
+      priceChange24h: z.number().optional(),
+      pairAgeDays: z.number().nonnegative().optional(),
+      url: z.string().url().optional(),
+      observedAt: z.string(),
+      notes: z.array(z.string())
+    })
+    .optional()
+}) satisfies z.ZodType<RiskAnalysis>;
 
 export type RouteType =
   | "STANDARD_ROUTE"
@@ -196,7 +228,7 @@ export type RouteAnalysis = {
   routeEngineVersion: string;
 };
 
-const RouteOptionSchema: z.ZodType<RouteOption> = z.object({
+const RouteOptionSchema = z.object({
   routeId: z.string().min(1),
   routeName: z.string().min(1),
   action: z.enum(["swap", "bridge", "stake", "analyze", "unsupported"]),
@@ -218,21 +250,58 @@ const RouteOptionSchema: z.ZodType<RouteOption> = z.object({
   supportedExecutionModes: z.array(z.enum(["simulation", "report-on-chain", "testnet"])),
   decision: z.enum(["recommended", "available", "report-only", "not-recommended", "fallback"]),
   isRecommended: z.boolean()
-});
+}) satisfies z.ZodType<RouteOption>;
 
-export const RouteAnalysisSchema:z.ZodType<RouteAnalysis> = z.object({
+export const RouteAnalysisSchema = z.object({
   routes: z.array(RouteOptionSchema).min(1),
   recommendedRouteId: z.string().optional(),
   selectedRouteId: z.string().optional(),
   decisionSummary: z.string(),
   dataSource: z.literal("fixture"),
   routeEngineVersion: z.string()
-});
+}) satisfies z.ZodType<RouteAnalysis>;
 
 export const RouteAgentRequestSchema = z.object({
   intent: DeFiIntentSchema,
   analysis: RiskAnalysisSchema
 });
+
+export const ReportCreateRequestSchema = z
+  .object({
+    prompt: IntentPromptSchema.shape.prompt,
+    parsedIntent: DeFiIntentSchema,
+    selectedRouteId: z.string().trim().min(1).max(120),
+    userAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid wallet address").optional()
+  })
+  .strict();
+
+export const QuotePreviewRequestSchema = z
+  .object({
+    intent: DeFiIntentSchema,
+    takerAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid taker address").optional()
+  })
+  .strict();
+
+export type QuotePreview = {
+  provider: "0x" | "fixture";
+  status: "live" | "fallback" | "unavailable";
+  chainId: number;
+  pair: string;
+  sellAmount: string;
+  estimatedBuyAmount?: string;
+  minimumBuyAmount?: string;
+  estimatedGas?: string;
+  routeSources: string[];
+  allowanceRequired: boolean;
+  balanceIssue: boolean;
+  simulation: {
+    status: "not-configured" | "success" | "reverted";
+    gasEstimate?: string;
+    reason?: string;
+  };
+  observedAt: string;
+  notes: string[];
+};
 
 export type ExecutionMode = "Simulation Only" | "Report On-chain";
 
@@ -245,6 +314,7 @@ export type SentinelReport = {
   riskLevel: RiskLevel;
   riskFactors: RiskFactors;
   riskFactorExplanations: RiskFactorExplanation[];
+  marketEvidence?: MarketEvidence;
   recommendedRoute: RouteRecommendation;
   agentTrace: AgentResult[];
   modelVersion: string;

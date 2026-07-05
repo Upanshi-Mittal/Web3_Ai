@@ -70,4 +70,39 @@ contract SentinelReportRegistryTest is Test {
         vm.expectRevert(SentinelReportRegistry.RiskScoreOutOfRange.selector);
         registry.createReport(keccak256("bad-score"), 101, "STANDARD_ROUTE", "sentinelmesh://reports/bad");
     }
+
+    function testRejectsDuplicateReportForSameUser() public {
+        bytes32 reportHash = keccak256("duplicate");
+
+        vm.prank(user);
+        registry.createReport(reportHash, 15, "STANDARD_ROUTE", "sentinelmesh://reports/duplicate");
+
+        vm.expectRevert(SentinelReportRegistry.DuplicateReport.selector);
+        vm.prank(user);
+        registry.createReport(reportHash, 15, "STANDARD_ROUTE", "sentinelmesh://reports/duplicate");
+    }
+
+    function testAllowsSameHashForDifferentUsers() public {
+        bytes32 reportHash = keccak256("shared-hash");
+        address bob = address(0xB0B);
+
+        vm.prank(user);
+        registry.createReport(reportHash, 15, "STANDARD_ROUTE", "sentinelmesh://reports/alice");
+        vm.prank(bob);
+        registry.createReport(reportHash, 15, "STANDARD_ROUTE", "sentinelmesh://reports/bob");
+
+        assertEq(registry.getUserReports(user).length, 1);
+        assertEq(registry.getUserReports(bob).length, 1);
+    }
+
+    function testRejectsEmptyFieldsAndZeroHash() public {
+        vm.expectRevert(SentinelReportRegistry.InvalidReportHash.selector);
+        registry.createReport(bytes32(0), 15, "STANDARD_ROUTE", "sentinelmesh://reports/zero");
+
+        vm.expectRevert(SentinelReportRegistry.EmptyRecommendation.selector);
+        registry.createReport(keccak256("empty-recommendation"), 15, "", "sentinelmesh://reports/empty");
+
+        vm.expectRevert(SentinelReportRegistry.EmptyReportURI.selector);
+        registry.createReport(keccak256("empty-uri"), 15, "STANDARD_ROUTE", "");
+    }
 }

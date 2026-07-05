@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, BadgeCheck, Clock, Download, FileText, Link2, Loader2, Search, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, BadgeCheck, Clock, Download, FileText, Link2, Loader2, Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { SentinelReport } from "@sentinelmesh/shared";
@@ -28,7 +28,7 @@ export function ReportsList() {
     return reports.filter((report) => {
       const statusMatches = statusFilter === "all" || report.verificationStatus === statusFilter;
       const textMatches =
-        normalized.length === 0 ||
+        !normalized ||
         report.originalPrompt.toLowerCase().includes(normalized) ||
         report.parsedIntent.tokenIn?.toLowerCase().includes(normalized) ||
         report.parsedIntent.tokenOut?.toLowerCase().includes(normalized) ||
@@ -68,27 +68,29 @@ export function ReportsList() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Summary label="Total" value={counts.total} />
         <Summary label="Verified" value={counts.verified} tone="success" />
         <Summary label="Local-only" value={counts.local} />
         <Summary label="Pending" value={counts.pending} tone="warning" />
       </div>
 
-      <div className="flex flex-col gap-3 rounded-lg border border-white/10 bg-panel/92 p-4 md:flex-row md:items-center">
-        <label className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
-          <Search size={16} className="text-slate-500" />
+      <div className="surface flex flex-col gap-3 rounded-lg p-4 md:flex-row md:items-center">
+        <label className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-panel2 px-3 py-2 text-sm text-muted">
+          <Search size={16} />
           <input
+            aria-label="Search reports"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search prompt, token, or hash"
-            className="w-full bg-transparent text-white outline-none placeholder:text-slate-500"
+            className="w-full bg-transparent text-ink outline-none placeholder:text-muted"
           />
         </label>
         <select
+          aria-label="Filter reports by status"
           value={statusFilter}
           onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
-          className="rounded-md border border-white/10 bg-panel2 px-3 py-2 text-sm text-white"
+          className="rounded-md border border-border bg-white px-3 py-2 text-sm text-ink"
         >
           <option value="all">All statuses</option>
           <option value="verified">Verified</option>
@@ -103,7 +105,7 @@ export function ReportsList() {
       ) : (
         <div className="grid gap-4">
           {filteredReports.map((report) => (
-            <div key={report.id} className="rounded-lg border border-white/10 bg-panel/92 p-5 transition hover:border-teal/35 hover:bg-panel">
+            <div key={report.id} className="surface rounded-lg p-5 transition hover:-translate-y-0.5 hover:border-teal/35 hover:shadow-lift">
               <Link href={`/reports/${report.id}`} className="block">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
@@ -111,13 +113,13 @@ export function ReportsList() {
                       <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", riskColor(report.riskLevel))}>
                         {report.riskLevel} {report.riskScore}/100
                       </span>
-                      <span className="rounded-md border border-white/10 px-2 py-1 text-xs text-slate-300">
+                      <span className="rounded-md border border-violet/15 bg-violet/5 px-2 py-1 text-xs text-violet">
                         {report.recommendedRoute.recommendedRoute}
                       </span>
                       <Status status={report.verificationStatus} />
                     </div>
-                    <h2 className="mt-3 text-lg font-semibold text-white">{report.originalPrompt}</h2>
-                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                    <h2 className="mt-3 text-lg font-semibold text-ink">{report.originalPrompt}</h2>
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
                       <span className="inline-flex items-center gap-1">
                         <Clock size={14} />
                         {new Date(report.createdAt).toLocaleString()}
@@ -125,27 +127,31 @@ export function ReportsList() {
                       <span>{shortHash(report.reportHash)}</span>
                     </div>
                   </div>
-                  <ShieldCheck className="text-teal" size={22} />
+                  <ArrowUpRight className="text-teal" size={20} />
                 </div>
               </Link>
-              <button
-                onClick={() => {
-                  copyReportLink(report.id);
-                  setCopiedReportId(report.id);
-                  window.setTimeout(() => setCopiedReportId(null), 1600);
-                }}
-                className="mt-4 inline-flex items-center gap-2 rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:border-teal/40 hover:text-white"
-              >
-                <Link2 size={14} />
-                {copiedReportId === report.id ? "Copied" : "Copy link"}
-              </button>
-              <button
-                onClick={() => downloadReport(report)}
-                className="ml-2 mt-4 inline-flex items-center gap-2 rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:border-teal/40 hover:text-white"
-              >
-                <Download size={14} />
-                Download JSON
-              </button>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(`${window.location.origin}/reports/${report.id}`);
+                    setCopiedReportId(report.id);
+                    window.setTimeout(() => setCopiedReportId(null), 1600);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-ink hover:border-teal/40"
+                >
+                  <Link2 size={14} />
+                  {copiedReportId === report.id ? "Copied" : "Copy link"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadReport(report)}
+                  className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-ink hover:border-teal/40"
+                >
+                  <Download size={14} />
+                  Download JSON
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -154,35 +160,15 @@ export function ReportsList() {
   );
 }
 
-function Status({ status }: { status: SentinelReport["verificationStatus"] }) {
-  const verified = status === "verified";
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs",
-        verified ? "border-success/30 bg-success/10 text-success" : "border-white/10 bg-white/[0.04] text-slate-300"
-      )}
-    >
-      <BadgeCheck size={13} />
-      {status}
-    </span>
-  );
-}
-
 function Summary({ label, value, tone }: { label: string; value: number; tone?: "success" | "warning" }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-panel/92 p-4">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className={cn("mt-2 text-2xl font-semibold text-white", tone === "success" && "text-success", tone === "warning" && "text-warning")}>
+    <div className="surface rounded-lg p-4">
+      <div className="text-xs uppercase text-muted">{label}</div>
+      <div className={cn("mt-2 text-2xl font-semibold text-ink", tone === "success" && "text-success", tone === "warning" && "text-warning")}>
         {value}
       </div>
     </div>
   );
-}
-
-function copyReportLink(reportId: string) {
-  const origin = typeof window === "undefined" ? "" : window.location.origin;
-  void navigator.clipboard.writeText(`${origin}/reports/${reportId}`);
 }
 
 function downloadReport(report: SentinelReport) {
@@ -193,6 +179,21 @@ function downloadReport(report: SentinelReport) {
   link.download = `sentinelmesh-report-${report.id}.json`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function Status({ status }: { status: SentinelReport["verificationStatus"] }) {
+  const verified = status === "verified";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs",
+        verified ? "border-success/20 bg-emerald-50 text-success" : "border-border bg-panel2 text-muted"
+      )}
+    >
+      <BadgeCheck size={13} />
+      {status}
+    </span>
+  );
 }
 
 function State({
@@ -209,12 +210,12 @@ function State({
   tone?: "danger";
 }) {
   return (
-    <div className={cn("rounded-lg border bg-panel/92 p-8 text-center", tone === "danger" ? "border-danger/30" : "border-white/10")}>
-      <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-teal">
+    <div className={cn("surface rounded-lg p-8 text-center", tone === "danger" && "border-danger/30")}>
+      <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-md border border-border bg-emerald-50 text-teal">
         {icon}
       </div>
-      <h2 className="mt-4 font-semibold text-white">{title}</h2>
-      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-400">{body}</p>
+      <h2 className="mt-4 font-semibold text-ink">{title}</h2>
+      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">{body}</p>
       {action}
     </div>
   );

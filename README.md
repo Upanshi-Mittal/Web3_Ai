@@ -28,6 +28,8 @@ SentinelMesh then:
 5. Saves the report in history.
 6. Optionally anchors the report hash on a testnet registry when Web3 deployment metadata is configured.
 
+For supported swap pairs, the risk engine can add read-only DEX Screener liquidity, volume, price-movement, and pool-age evidence. An optional server-side 0x adapter provides a sanitized quote and read-only simulation preview without exposing calldata or broadcasting a transaction.
+
 SentinelMesh v0 does not custody funds, execute swaps, or claim guaranteed MEV protection. It is a risk intelligence and verification layer.
 
 ## Final User Flow
@@ -44,9 +46,10 @@ The full local flow works without a deployed contract by creating local-only rep
 - Wallet/Web3: RainbowKit, wagmi, viem
 - API: Node.js, Express, TypeScript
 - Smart contracts: Solidity, Foundry
-- Storage: local JSON report storage for v0
+- Storage: Postgres in hosted environments with serialized local JSON fallback
 - Agents: custom Intent, Risk, Route, Report, and Verification agents
 - AI: optional Groq-backed intent/risk explanations with deterministic fallback
+- Quote evidence: optional server-side 0x AllowanceHolder quote and read-only RPC simulation
 - Deployment target: Vercel for frontend, Render/Railway/Fly.io for API
 
 ## Monorepo Structure
@@ -130,8 +133,16 @@ NEXT_PUBLIC_EXPLORER_LABEL=BaseScan
 ```bash
 PORT=4000
 REPORTS_DB_PATH=data/reports.json
+DATABASE_URL=
+DATABASE_SSL=disable
+ALLOWED_ORIGINS=http://localhost:3000
+AUTH_ALLOWED_DOMAINS=localhost:3000
+SESSION_SECRET=
 GROQ_API_KEY=
 GROQ_MODEL=llama-3.1-8b-instant
+ZEROX_API_KEY=
+ETHEREUM_MAINNET_RPC_URL=
+BASE_MAINNET_RPC_URL=
 REPORT_REGISTRY_ADDRESS=
 REPORT_REGISTRY_CHAIN_ID=84532
 REPORT_REGISTRY_RPC_URL=
@@ -242,8 +253,8 @@ See `docs/deployment-architecture.md` for the full component-by-component deploy
 
 - Contract verification requires a deployed testnet registry address and API RPC metadata.
 - Final public app URL, API URL, contract address, and demo video URL must be added after deployment.
-- Live DEX quotes, private relay integrations, and token metadata APIs are future adapters.
-- Local JSON storage is used for v0 report history.
+- The 0x adapter is read-only and supports only allowlisted pairs; signed quote evidence is not yet persisted in reports.
+- Local JSON storage is intended for a single local API instance. Hosted deployments should configure Postgres.
 - Testnet-only report anchoring. No swap execution path is implemented.
 - SentinelMesh estimates risk; it does not guarantee MEV protection or fully secure execution.
 

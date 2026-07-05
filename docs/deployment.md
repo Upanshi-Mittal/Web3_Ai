@@ -48,7 +48,9 @@ Notes:
 - `GROQ_API_KEY` is optional. Without it, deterministic parser/risk fallback still works.
 - `REPORT_REGISTRY_ADDRESS` and `REPORT_REGISTRY_RPC_URL` are required for backend on-chain verification.
 - Keep `ALLOW_CLIENT_SUPPLIED_ONCHAIN_HASH=false` for production demos.
-- Local report storage is JSON. For a longer-lived deployment, replace it with Supabase/Postgres.
+- `SESSION_SECRET` is mandatory in production and invalidates active sessions when rotated.
+- Set `DATABASE_URL` for hosted deployments. Without it, use a persistent disk and one API instance.
+- `ZEROX_API_KEY` enables sanitized server-side quote previews. Mainnet RPC variables are used only for `eth_call` and gas estimation; SentinelMesh never broadcasts these transactions.
 
 ## 3. Frontend Deployment
 
@@ -164,3 +166,9 @@ If live data or Groq fails:
 
 - Leave `GROQ_API_KEY` blank and use deterministic fallback scenarios.
 - Use the safe and risky demo prompts from `docs/demo-script.md`.
+
+## 8. Platform Configuration
+
+`render.yaml` provisions the Docker-based API and Postgres database. Add secrets in Render before deployment. The API image uses `Dockerfile.api` and exposes `/ready` for dependency health checks.
+
+For Vercel, set the project root to `apps/web`, use the Next.js preset, and keep API secrets out of `NEXT_PUBLIC_*` variables.

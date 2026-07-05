@@ -120,18 +120,24 @@ export function hydrateNetworkMetadata(
   networks: Web3NetworkMetadata[],
   options: {
     registryAddress?: `0x${string}`;
+    registryChainId?: number;
     explorerTxUrlTemplate?: string;
     explorerLabel?: string;
   }
 ): Web3NetworkMetadata[] {
-  return networks.map((network) => ({
-    ...network,
-    registryAddress: options.registryAddress,
-    explorer: {
-      label: options.explorerLabel ?? "Explorer",
-      txUrlTemplate: options.explorerTxUrlTemplate
-    }
-  }));
+  return networks.map((network) => {
+    const isRegistryChain = options.registryChainId === undefined || network.chain.id === options.registryChainId;
+    return {
+      ...network,
+      registryAddress: isRegistryChain ? options.registryAddress : undefined,
+      explorer: isRegistryChain
+        ? {
+            label: options.explorerLabel ?? "Explorer",
+            txUrlTemplate: options.explorerTxUrlTemplate
+          }
+        : undefined
+    };
+  });
 }
 
 export function getDefaultNetwork(networks: Web3NetworkMetadata[]): Web3NetworkMetadata {

@@ -1,27 +1,31 @@
 "use client";
 
-import { AlertTriangle, BadgeCheck, CheckCircle2, Copy, Download, ExternalLink, FileCheck2, Loader2, Share2 } from "lucide-react";
+import { AlertTriangle, BadgeCheck, CheckCircle2, Check, Copy, Download, ExternalLink, FileCheck2, Loader2, Share2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { usePublicClient } from "wagmi";
 import type { SentinelReport } from "@sentinelmesh/shared";
-import { getDefaultNetwork, getExplorerTxUrl, hydrateNetworkMetadata, placeholderNetworks, sentinelReportRegistryAbi } from "@sentinelmesh/web3";
+import { findNetworkByChainId, getDefaultNetwork, getExplorerTxUrl, hydrateNetworkMetadata, placeholderNetworks, sentinelReportRegistryAbi } from "@sentinelmesh/web3";
 import { api } from "@/lib/api";
 import { cn, riskColor, shortHash } from "@/lib/format";
+import { MarketEvidence } from "@/components/risk/MarketEvidence";
 
 export function ReportDetail({ id }: { id: string }) {
   const [report, setReport] = useState<SentinelReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
+  const [shared, setShared] = useState(false);
+  const [hashCopied, setHashCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<"link" | "hash" | null>(null);
   const publicClient = usePublicClient();
   const registryAddress = process.env.NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS as `0x${string}` | undefined;
-  const [network] = hydrateNetworkMetadata(placeholderNetworks, {
+  const registryChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 84532);
+  const networks = hydrateNetworkMetadata(placeholderNetworks, {
     registryAddress,
+    registryChainId,
     explorerTxUrlTemplate: process.env.NEXT_PUBLIC_EXPLORER_TX_URL_TEMPLATE ?? process.env.NEXT_PUBLIC_EXPLORER_BASE_URL,
     explorerLabel: process.env.NEXT_PUBLIC_EXPLORER_LABEL
   });
-  const reportNetwork = network ?? getDefaultNetwork(placeholderNetworks);
+  const reportNetwork = findNetworkByChainId(networks, registryChainId) ?? getDefaultNetwork(networks);
 
   useEffect(() => {
     api
@@ -50,18 +54,30 @@ export function ReportDetail({ id }: { id: string }) {
     }
   }
 
-  async function copyReportLink() {
-    const value = window.location.href;
-    await navigator.clipboard.writeText(value);
-    setCopied("link");
-    window.setTimeout(() => setCopied(null), 1600);
+  async function shareReport() {
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "SentinelMesh risk report",
+          text: `${report?.riskLevel ?? "DeFi"} risk assessment from SentinelMesh`,
+          url
+        });
+      } else {
+        await navigator.clipboard.writeText(url);
+      }
+      setShared(true);
+      window.setTimeout(() => setShared(false), 2000);
+    } catch {
+      setShared(false);
+    }
   }
 
   async function copyReportHash() {
     if (!report) return;
     await navigator.clipboard.writeText(report.reportHash);
-    setCopied("hash");
-    window.setTimeout(() => setCopied(null), 1600);
+    setHashCopied(true);
+    window.setTimeout(() => setHashCopied(false), 1600);
   }
 
   if (loading) {
@@ -82,16 +98,16 @@ export function ReportDetail({ id }: { id: string }) {
   return (
     <div className="space-y-5">
       {error && (
-        <div className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-rose-200">{error}</div>
+        <div className="rounded-md border border-danger/20 bg-red-50 p-3 text-sm text-danger">{error}</div>
       )}
-      <div className="rounded-lg border border-white/10 bg-panel/92 p-5">
+      <div className="surface rounded-lg p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="mb-3 flex flex-wrap gap-2">
               <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", riskColor(report.riskLevel))}>
                 {report.riskLevel} {report.riskScore}/100
               </span>
-              <span className="rounded-md border border-violet/30 bg-violet/10 px-2 py-1 text-xs text-violet">
+              <span className="rounded-md border border-violet/20 bg-violet/5 px-2 py-1 text-xs text-violet">
                 {report.recommendedRoute.recommendedRoute}
               </span>
               <span className={cn("inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs", verification.className)}>
@@ -99,39 +115,43 @@ export function ReportDetail({ id }: { id: string }) {
                 {verification.label}
               </span>
             </div>
-            <h1 className="text-2xl font-semibold text-white">{report.originalPrompt}</h1>
-            <p className="mt-2 text-sm text-slate-400">Created {new Date(report.createdAt).toLocaleString()}</p>
+            <h1 className="text-2xl font-semibold text-ink">{report.originalPrompt}</h1>
+            <p className="mt-2 text-sm text-muted">Created {new Date(report.createdAt).toLocaleString()}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={copyReportLink}
-              className="inline-flex items-center gap-2 rounded-md border border-white/10 px-3 py-2 text-sm font-semibold text-slate-300 hover:border-teal/40 hover:text-white"
+              type="button"
+              onClick={shareReport}
+              className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink hover:border-teal/40"
             >
-              <Share2 size={15} />
-              {copied === "link" ? "Copied" : "Copy link"}
+              {shared ? <Check className="text-success" size={16} /> : <Share2 size={16} />}
+              {shared ? "Link copied" : "Share report"}
             </button>
             <button
+              type="button"
               onClick={() => downloadReport(report)}
-              className="inline-flex items-center gap-2 rounded-md border border-white/10 px-3 py-2 text-sm font-semibold text-slate-300 hover:border-teal/40 hover:text-white"
+              className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink hover:border-teal/40"
             >
-              <Download size={15} />
+              <Download size={16} />
               Download JSON
             </button>
             <button
+              type="button"
               onClick={verify}
               disabled={verifying || !registryAddress || !report.userAddress}
-              className="inline-flex items-center gap-2 rounded-md bg-teal px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal disabled:opacity-50"
             >
               {verifying ? <Loader2 className="animate-spin" size={16} /> : <BadgeCheck size={16} />}
-              Verify Hash
+              Verify hash
             </button>
           </div>
         </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
-        <section className="rounded-lg border border-white/10 bg-panel/92 p-5">
-          <h2 className="font-semibold text-white">Parsed Intent</h2>
+        <section className="surface rounded-lg p-5">
+          <div className="eyebrow">Input</div>
+          <h2 className="mt-1 font-semibold text-ink">Parsed intent</h2>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
             {Object.entries({
               Action: report.parsedIntent.action,
@@ -141,16 +161,17 @@ export function ReportDetail({ id }: { id: string }) {
               Chain: report.parsedIntent.chain ?? "-",
               Priority: report.parsedIntent.priority
             }).map(([key, value]) => (
-              <div key={key} className="rounded-md border border-white/10 bg-slate-950/40 p-3">
-                <dt className="text-xs text-slate-500">{key}</dt>
-                <dd className="mt-1 font-medium text-white">{value}</dd>
+              <div key={key} className="rounded-md border border-border bg-panel2 p-3">
+                <dt className="text-xs text-muted">{key}</dt>
+                <dd className="mt-1 font-medium text-ink">{value}</dd>
               </div>
             ))}
           </dl>
         </section>
 
-        <section className="rounded-lg border border-white/10 bg-panel/92 p-5">
-          <h2 className="font-semibold text-white">Verification</h2>
+        <section className="surface rounded-lg p-5">
+          <div className="eyebrow text-violet">Evidence</div>
+          <h2 className="mt-1 font-semibold text-ink">Verification</h2>
           <div className={cn("mt-3 rounded-md border p-3 text-sm", verification.className)}>
             <div className="flex items-center gap-2 font-semibold">
               <verification.icon size={17} />
@@ -159,12 +180,21 @@ export function ReportDetail({ id }: { id: string }) {
             <p className="mt-2 text-xs leading-5">{verification.description}</p>
           </div>
           {(!registryAddress || !report.userAddress) && (
-            <p className="mt-3 rounded-md border border-white/10 bg-slate-950/40 p-3 text-xs leading-5 text-slate-400">
+            <p className="mt-3 rounded-md border border-border bg-panel2 p-3 text-xs leading-5 text-muted">
               Registry verification needs a deployed registry address and a wallet address saved on the report. Local-only reports still keep a deterministic hash.
             </p>
           )}
           <div className="mt-4 space-y-3 text-sm">
-            <HashRow label="Report hash" value={shortHash(report.reportHash)} action={<button onClick={copyReportHash} className="inline-flex items-center gap-1 text-teal underline"><Copy size={13} />{copied === "hash" ? "Copied" : "Copy"}</button>} />
+            <HashRow
+              label="Report hash"
+              value={shortHash(report.reportHash)}
+              action={
+                <button type="button" onClick={copyReportHash} className="inline-flex items-center gap-1 text-teal underline">
+                  <Copy size={13} />
+                  {hashCopied ? "Copied" : "Copy"}
+                </button>
+              }
+            />
             <HashRow label="Report URI" value={report.reportURI} />
             <HashRow label="Tx hash" value={shortHash(report.chainTxHash)} />
             {explorerUrl && (
@@ -177,34 +207,38 @@ export function ReportDetail({ id }: { id: string }) {
         </section>
       </div>
 
-      <section className="rounded-lg border border-white/10 bg-panel/92 p-5">
-        <h2 className="font-semibold text-white">Risk Factors</h2>
+      <MarketEvidence evidence={report.marketEvidence} />
+
+      <section className="surface rounded-lg p-5">
+        <div className="eyebrow">Assessment</div>
+        <h2 className="mt-1 font-semibold text-ink">Risk factors</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {report.riskFactorExplanations.map((factor) => (
-            <div key={factor.key} className="rounded-md border border-white/10 bg-slate-950/40 p-4">
+            <div key={factor.key} className="rounded-md border border-border bg-panel2 p-4">
               <div className="flex justify-between gap-3">
-                <h3 className="text-sm font-semibold text-white">{factor.label}</h3>
-                <span className="text-xs text-slate-300">{factor.score}/100</span>
+                <h3 className="text-sm font-semibold text-ink">{factor.label}</h3>
+                <span className="text-xs text-muted">{factor.score}/100</span>
               </div>
-              <p className="mt-3 text-xs leading-5 text-slate-400">{factor.explanation}</p>
+              <p className="mt-3 text-xs leading-5 text-muted">{factor.explanation}</p>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-panel/92 p-5">
-        <h2 className="font-semibold text-white">Agent Trace</h2>
+      <section className="surface rounded-lg p-5">
+        <div className="eyebrow text-violet">Audit trail</div>
+        <h2 className="mt-1 font-semibold text-ink">Agent trace</h2>
         <div className="mt-4 grid gap-3">
           {report.agentTrace.map((agent, index) => (
-            <div key={`${agent.agentName}-${index}`} className="rounded-md border border-white/10 bg-slate-950/40 p-4">
+            <div key={`${agent.agentName}-${index}`} className="rounded-md border border-border bg-panel2 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                <div className="flex items-center gap-2 text-sm font-semibold text-ink">
                   <CheckCircle2 className={agent.status === "warning" ? "text-warning" : "text-success"} size={17} />
                   {agent.agentName}
                 </div>
-                <span className="text-xs text-slate-400">{Math.round(agent.confidence * 100)}% confidence</span>
+                <span className="text-xs text-muted">{Math.round(agent.confidence * 100)}% confidence</span>
               </div>
-              <ul className="mt-3 space-y-1 text-xs leading-5 text-slate-400">
+              <ul className="mt-3 space-y-1 text-xs leading-5 text-muted">
                 {agent.reasoning.map((line) => (
                   <li key={line}>{line}</li>
                 ))}
@@ -218,14 +252,14 @@ export function ReportDetail({ id }: { id: string }) {
 }
 
 function Panel({ children }: { children: React.ReactNode }) {
-  return <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-panel/92 p-6 text-slate-300">{children}</div>;
+  return <div className="surface flex items-center gap-3 rounded-lg p-6 text-muted">{children}</div>;
 }
 
 function HashRow({ label, value, action }: { label: string; value: string; action?: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-md border border-white/10 bg-slate-950/40 p-3">
-      <span className="text-slate-500">{label}</span>
-      <span className="flex flex-wrap items-center justify-end gap-2 break-all text-right text-white">
+    <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-panel2 p-3">
+      <span className="text-muted">{label}</span>
+      <span className="flex flex-wrap items-center justify-end gap-2 break-all text-right text-ink">
         {value}
         {action}
       </span>
@@ -238,15 +272,15 @@ function verificationCopy(report: SentinelReport) {
     return {
       label: "Verified on-chain",
       description: "The local report hash matches the hash read from the registry.",
-      className: "border-success/30 bg-success/10 text-success",
+      className: "border-success/20 bg-emerald-50 text-success",
       icon: BadgeCheck
     };
   }
   if (report.verificationStatus === "mismatch") {
     return {
       label: "Hash mismatch",
-      description: "The local report hash did not match the on-chain registry hash. Do not treat this report as verified.",
-      className: "border-danger/30 bg-danger/10 text-rose-200",
+      description: "The local report hash did not match the registry hash. Do not treat this report as verified.",
+      className: "border-danger/20 bg-red-50 text-danger",
       icon: AlertTriangle
     };
   }
@@ -254,14 +288,14 @@ function verificationCopy(report: SentinelReport) {
     return {
       label: "Verification pending",
       description: "The report has transaction metadata but still needs registry verification.",
-      className: "border-warning/30 bg-warning/10 text-amber-200",
+      className: "border-warning/20 bg-amber-50 text-amber-900",
       icon: FileCheck2
     };
   }
   return {
     label: "Local-only report",
-    description: "This report has a deterministic local hash but has not been anchored to the registry.",
-    className: "border-white/10 bg-slate-950/40 text-slate-300",
+    description: "This deterministic report has not been anchored to the registry.",
+    className: "border-border bg-panel2 text-muted",
     icon: FileCheck2
   };
 }
