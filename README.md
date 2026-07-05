@@ -236,6 +236,7 @@ Judge walkthrough:
 10. Show copy link, copy hash, JSON download, and verification status.
 
 See `docs/demo-script.md` for the 2-minute narration and screenshot checklist.
+See `docs/deployment-architecture.md` for the full component-by-component deployment architecture.
 
 ## Known Limitations
 

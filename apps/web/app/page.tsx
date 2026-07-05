@@ -7,57 +7,81 @@ const loop = ["Ask", "Parse", "Analyze", "Recommend", "Verify", "Save", "Share"]
 export default function LandingPage() {
   return (
     <main>
-      <section className="relative overflow-hidden border-b border-white/10">
-        <div className="mx-auto grid min-h-[calc(100vh-66px)] max-w-7xl items-center gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[1fr_0.95fr] lg:px-8">
-          <div className="max-w-3xl">
-            <div className="mb-5 inline-flex items-center gap-2 rounded-md border border-teal/30 bg-teal/10 px-3 py-2 text-sm text-teal">
-              <ShieldCheck size={16} />
-              Multi-agent DeFi risk copilot
-            </div>
-            <h1 className="text-4xl font-semibold tracking-normal text-white sm:text-6xl">
-              SentinelMesh
-            </h1>
-            <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-300">
-              Type a DeFi intent, get a structured risk assessment, choose a safer route, and anchor the report hash on testnet for verification.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link
-                href="/app"
-                className="inline-flex items-center gap-2 rounded-md bg-teal px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-teal/90"
-              >
-                Open Copilot
-                <ArrowRight size={17} />
-              </Link>
-              <Link
-                href="/reports"
-                className="inline-flex items-center gap-2 rounded-md border border-white/15 px-4 py-3 text-sm font-semibold text-white hover:bg-white/8"
-              >
-                View Reports
-              </Link>
-            </div>
-            <div className="mt-9 flex flex-wrap gap-2">
-              {loop.map((item) => (
-                <span key={item} className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-300">
-                  {item}
-                </span>
-              ))}
-            </div>
-          </div>
+            <section className="relative overflow-hidden border-b border-white/10">
+  <div className="mx-auto flex min-h-[calc(100vh-66px)] max-w-7xl items-center justify-center px-4 sm:px-6 lg:px-8">
 
-          <div className="relative">
-            <div className="overflow-hidden rounded-lg border border-white/12 bg-panel shadow-glow">
-              <Image
-                src="/work-distribution.png"
-                alt="SentinelMesh team work distribution"
-                width={1400}
-                height={850}
-                priority
-                className="h-auto w-full"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
+    <div className="max-w-4xl text-center">
+
+  {/* Badge */}
+  <div className="mb-8 inline-flex items-center gap-3 rounded-full border border-teal-400/25 bg-teal/10 px-5 py-2.5 backdrop-blur-md">
+    <ShieldCheck size={17} className="text-teal-300" />
+    <span className="text-sm font-medium tracking-wide border-teal text-teal">
+      Multi-Agent DeFi Risk Copilot
+    </span>
+  </div>
+
+  {/* Heading */}
+  <h1 className="text-6xl font-black tracking-[-0.06em] text-white sm:text-7xl lg:text-8xl">
+    Sentinel
+    <span className="text-white/95">Mesh</span>
+  </h1>
+
+  {/* Description */}
+  <p className="mx-auto mt-8 max-w-3xl text-xl leading-10 text-slate-400 sm:text-2xl">
+    Transform natural-language DeFi intents into
+    <span className="font-medium text-white">
+      {" "}explainable risk analysis
+    </span>,
+    safer execution routes, and
+    <span className="font-medium text-teal-300">
+      {" "}cryptographically verifiable reports.
+    </span>
+  </p>
+
+  {/* Buttons */}
+  <div className="mt-12 flex flex-wrap justify-center gap-5">
+
+    <Link
+      href="/app"
+      className="group inline-flex items-center gap-3 rounded-xl bg-teal px-7 py-4 text-base font-semibold text-slate-950 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_35px_rgba(45,212,191,0.35)]"
+    >
+      Open Copilot
+
+      <ArrowRight
+        size={20}
+        className="transition-transform duration-300 group-hover:translate-x-1"
+      />
+    </Link>
+
+    <Link
+      href="/reports"
+      className="inline-flex items-center gap-3 rounded-xl border border-white/15 bg-white/[0.03] px-7 py-4 text-base font-semibold text-white backdrop-blur-sm transition hover:border-white/30 hover:bg-white/[0.05]"
+    >
+      View Reports
+    </Link>
+
+  </div>
+
+  {/* Chips */}
+  <div className="mt-14 flex flex-wrap justify-center gap-3">
+
+    {loop.map((item) => (
+
+      <span
+        key={item}
+        className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:border-teal-400/40 hover:bg-teal-400/10 hover:text-teal-300"
+      >
+        {item}
+      </span>
+
+    ))}
+
+  </div>
+
+</div>
+
+  </div>
+</section>
 
       <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

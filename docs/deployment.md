@@ -2,6 +2,8 @@
 
 SentinelMesh v0 is testnet-only. The report registry stores report hashes and metadata; it does not execute swaps or custody user funds.
 
+For the full component inventory, platform rationale, free-tier notes, scalability concerns, and architecture diagram, see `docs/deployment-architecture.md`.
+
 ## 1. Preflight
 
 Run locally before deploying:
