@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, BadgeCheck, CheckCircle2, Check, ExternalLink, Loader2, Share2 } from "lucide-react";
+import { AlertTriangle, BadgeCheck, CheckCircle2, Check, Copy, Download, ExternalLink, FileCheck2, Loader2, Share2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { usePublicClient } from "wagmi";
 import type { SentinelReport } from "@sentinelmesh/shared";
@@ -14,6 +14,7 @@ export function ReportDetail({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [shared, setShared] = useState(false);
+  const [hashCopied, setHashCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const publicClient = usePublicClient();
   const registryAddress = process.env.NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS as `0x${string}` | undefined;
@@ -72,6 +73,13 @@ export function ReportDetail({ id }: { id: string }) {
     }
   }
 
+  async function copyReportHash() {
+    if (!report) return;
+    await navigator.clipboard.writeText(report.reportHash);
+    setHashCopied(true);
+    window.setTimeout(() => setHashCopied(false), 1600);
+  }
+
   if (loading) {
     return <Panel><Loader2 className="animate-spin text-teal" /> Loading report...</Panel>;
   }
@@ -85,6 +93,7 @@ export function ReportDetail({ id }: { id: string }) {
   }
 
   const explorerUrl = getExplorerTxUrl(report.chainTxHash, reportNetwork.explorer?.txUrlTemplate);
+  const verification = verificationCopy(report);
 
   return (
     <div className="space-y-5">
@@ -101,8 +110,9 @@ export function ReportDetail({ id }: { id: string }) {
               <span className="rounded-md border border-violet/20 bg-violet/5 px-2 py-1 text-xs text-violet">
                 {report.recommendedRoute.recommendedRoute}
               </span>
-              <span className={cn("rounded-md border px-2 py-1 text-xs", report.verificationStatus === "verified" ? "border-success/20 bg-emerald-50 text-success" : "border-border bg-panel2 text-muted")}>
-                {report.verificationStatus}
+              <span className={cn("inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs", verification.className)}>
+                <verification.icon size={13} />
+                {verification.label}
               </span>
             </div>
             <h1 className="text-2xl font-semibold text-ink">{report.originalPrompt}</h1>
@@ -116,6 +126,14 @@ export function ReportDetail({ id }: { id: string }) {
             >
               {shared ? <Check className="text-success" size={16} /> : <Share2 size={16} />}
               {shared ? "Link copied" : "Share report"}
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadReport(report)}
+              className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink hover:border-teal/40"
+            >
+              <Download size={16} />
+              Download JSON
             </button>
             <button
               type="button"
@@ -154,13 +172,29 @@ export function ReportDetail({ id }: { id: string }) {
         <section className="surface rounded-lg p-5">
           <div className="eyebrow text-violet">Evidence</div>
           <h2 className="mt-1 font-semibold text-ink">Verification</h2>
+          <div className={cn("mt-3 rounded-md border p-3 text-sm", verification.className)}>
+            <div className="flex items-center gap-2 font-semibold">
+              <verification.icon size={17} />
+              {verification.label}
+            </div>
+            <p className="mt-2 text-xs leading-5">{verification.description}</p>
+          </div>
           {(!registryAddress || !report.userAddress) && (
             <p className="mt-3 rounded-md border border-border bg-panel2 p-3 text-xs leading-5 text-muted">
               Registry verification needs a deployed registry address and a wallet address saved on the report. Local-only reports still keep a deterministic hash.
             </p>
           )}
           <div className="mt-4 space-y-3 text-sm">
-            <HashRow label="Report hash" value={shortHash(report.reportHash)} />
+            <HashRow
+              label="Report hash"
+              value={shortHash(report.reportHash)}
+              action={
+                <button type="button" onClick={copyReportHash} className="inline-flex items-center gap-1 text-teal underline">
+                  <Copy size={13} />
+                  {hashCopied ? "Copied" : "Copy"}
+                </button>
+              }
+            />
             <HashRow label="Report URI" value={report.reportURI} />
             <HashRow label="Tx hash" value={shortHash(report.chainTxHash)} />
             {explorerUrl && (
@@ -221,13 +255,59 @@ function Panel({ children }: { children: React.ReactNode }) {
   return <div className="surface flex items-center gap-3 rounded-lg p-6 text-muted">{children}</div>;
 }
 
-function HashRow({ label, value }: { label: string; value: string }) {
+function HashRow({ label, value, action }: { label: string; value: string; action?: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-panel2 p-3">
       <span className="text-muted">{label}</span>
-      <span className="break-all text-right text-ink">{value}</span>
+      <span className="flex flex-wrap items-center justify-end gap-2 break-all text-right text-ink">
+        {value}
+        {action}
+      </span>
     </div>
   );
+}
+
+function verificationCopy(report: SentinelReport) {
+  if (report.verificationStatus === "verified") {
+    return {
+      label: "Verified on-chain",
+      description: "The local report hash matches the hash read from the registry.",
+      className: "border-success/20 bg-emerald-50 text-success",
+      icon: BadgeCheck
+    };
+  }
+  if (report.verificationStatus === "mismatch") {
+    return {
+      label: "Hash mismatch",
+      description: "The local report hash did not match the registry hash. Do not treat this report as verified.",
+      className: "border-danger/20 bg-red-50 text-danger",
+      icon: AlertTriangle
+    };
+  }
+  if (report.verificationStatus === "pending") {
+    return {
+      label: "Verification pending",
+      description: "The report has transaction metadata but still needs registry verification.",
+      className: "border-warning/20 bg-amber-50 text-amber-900",
+      icon: FileCheck2
+    };
+  }
+  return {
+    label: "Local-only report",
+    description: "This deterministic report has not been anchored to the registry.",
+    className: "border-border bg-panel2 text-muted",
+    icon: FileCheck2
+  };
+}
+
+function downloadReport(report: SentinelReport) {
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `sentinelmesh-report-${report.id}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 async function readOnChainReportHash({

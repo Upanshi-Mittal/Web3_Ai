@@ -1,8 +1,8 @@
 "use client";
 
-import { AlertTriangle, ArrowUpRight, BadgeCheck, Clock, FileText, Loader2, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, BadgeCheck, Clock, Download, FileText, Link2, Loader2, Search } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SentinelReport } from "@sentinelmesh/shared";
 import { api } from "@/lib/api";
 import { cn, riskColor, shortHash } from "@/lib/format";
@@ -11,6 +11,9 @@ export function ReportsList() {
   const [reports, setReports] = useState<SentinelReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<SentinelReport["verificationStatus"] | "all">("all");
+  const [copiedReportId, setCopiedReportId] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -19,6 +22,30 @@ export function ReportsList() {
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load reports"))
       .finally(() => setLoading(false));
   }, []);
+
+  const filteredReports = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return reports.filter((report) => {
+      const statusMatches = statusFilter === "all" || report.verificationStatus === statusFilter;
+      const textMatches =
+        !normalized ||
+        report.originalPrompt.toLowerCase().includes(normalized) ||
+        report.parsedIntent.tokenIn?.toLowerCase().includes(normalized) ||
+        report.parsedIntent.tokenOut?.toLowerCase().includes(normalized) ||
+        report.reportHash.toLowerCase().includes(normalized);
+      return statusMatches && textMatches;
+    });
+  }, [query, reports, statusFilter]);
+
+  const counts = useMemo(
+    () => ({
+      total: reports.length,
+      verified: reports.filter((report) => report.verificationStatus === "verified").length,
+      local: reports.filter((report) => report.verificationStatus === "local-only").length,
+      pending: reports.filter((report) => report.verificationStatus === "pending").length
+    }),
+    [reports]
+  );
 
   if (loading) {
     return <State icon={<Loader2 className="animate-spin" />} title="Loading reports" body="Reading local API storage." />;
@@ -40,39 +67,118 @@ export function ReportsList() {
   }
 
   return (
-    <div className="grid gap-4">
-      {reports.map((report) => (
-        <Link
-          key={report.id}
-          href={`/reports/${report.id}`}
-          className="surface rounded-lg p-5 transition hover:-translate-y-0.5 hover:border-teal/35 hover:shadow-lift"
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Summary label="Total" value={counts.total} />
+        <Summary label="Verified" value={counts.verified} tone="success" />
+        <Summary label="Local-only" value={counts.local} />
+        <Summary label="Pending" value={counts.pending} tone="warning" />
+      </div>
+
+      <div className="surface flex flex-col gap-3 rounded-lg p-4 md:flex-row md:items-center">
+        <label className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-panel2 px-3 py-2 text-sm text-muted">
+          <Search size={16} />
+          <input
+            aria-label="Search reports"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search prompt, token, or hash"
+            className="w-full bg-transparent text-ink outline-none placeholder:text-muted"
+          />
+        </label>
+        <select
+          aria-label="Filter reports by status"
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
+          className="rounded-md border border-border bg-white px-3 py-2 text-sm text-ink"
         >
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", riskColor(report.riskLevel))}>
-                  {report.riskLevel} {report.riskScore}/100
-                </span>
-                <span className="rounded-md border border-violet/15 bg-violet/5 px-2 py-1 text-xs text-violet">
-                  {report.recommendedRoute.recommendedRoute}
-                </span>
-                <Status status={report.verificationStatus} />
-              </div>
-              <h2 className="mt-3 text-lg font-semibold text-ink">{report.originalPrompt}</h2>
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
-                <span className="inline-flex items-center gap-1">
-                  <Clock size={14} />
-                  {new Date(report.createdAt).toLocaleString()}
-                </span>
-                <span>{shortHash(report.reportHash)}</span>
+          <option value="all">All statuses</option>
+          <option value="verified">Verified</option>
+          <option value="local-only">Local-only</option>
+          <option value="pending">Pending</option>
+          <option value="mismatch">Mismatch</option>
+        </select>
+      </div>
+
+      {filteredReports.length === 0 ? (
+        <State icon={<Search />} title="No matching reports" body="Try a different prompt, token, hash, or status filter." />
+      ) : (
+        <div className="grid gap-4">
+          {filteredReports.map((report) => (
+            <div key={report.id} className="surface rounded-lg p-5 transition hover:-translate-y-0.5 hover:border-teal/35 hover:shadow-lift">
+              <Link href={`/reports/${report.id}`} className="block">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", riskColor(report.riskLevel))}>
+                        {report.riskLevel} {report.riskScore}/100
+                      </span>
+                      <span className="rounded-md border border-violet/15 bg-violet/5 px-2 py-1 text-xs text-violet">
+                        {report.recommendedRoute.recommendedRoute}
+                      </span>
+                      <Status status={report.verificationStatus} />
+                    </div>
+                    <h2 className="mt-3 text-lg font-semibold text-ink">{report.originalPrompt}</h2>
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
+                      <span className="inline-flex items-center gap-1">
+                        <Clock size={14} />
+                        {new Date(report.createdAt).toLocaleString()}
+                      </span>
+                      <span>{shortHash(report.reportHash)}</span>
+                    </div>
+                  </div>
+                  <ArrowUpRight className="text-teal" size={20} />
+                </div>
+              </Link>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(`${window.location.origin}/reports/${report.id}`);
+                    setCopiedReportId(report.id);
+                    window.setTimeout(() => setCopiedReportId(null), 1600);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-ink hover:border-teal/40"
+                >
+                  <Link2 size={14} />
+                  {copiedReportId === report.id ? "Copied" : "Copy link"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadReport(report)}
+                  className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-ink hover:border-teal/40"
+                >
+                  <Download size={14} />
+                  Download JSON
+                </button>
               </div>
             </div>
-            <ArrowUpRight className="text-teal" size={20} />
-          </div>
-        </Link>
-      ))}
+          ))}
+        </div>
+      )}
     </div>
   );
+}
+
+function Summary({ label, value, tone }: { label: string; value: number; tone?: "success" | "warning" }) {
+  return (
+    <div className="surface rounded-lg p-4">
+      <div className="text-xs uppercase text-muted">{label}</div>
+      <div className={cn("mt-2 text-2xl font-semibold text-ink", tone === "success" && "text-success", tone === "warning" && "text-warning")}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function downloadReport(report: SentinelReport) {
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `sentinelmesh-report-${report.id}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function Status({ status }: { status: SentinelReport["verificationStatus"] }) {

@@ -222,6 +222,8 @@ export function AppDashboard() {
         created = verified.report;
         setTxState({ state: "confirmed", label: "Confirmed", description: "The report hash was anchored and the local report is marked for verification.", txHash });
       } else {
+        const verified = await api.verifyReport(created.id);
+        created = verified.report;
         setTxState({
           state: "skipped",
           label: "Local report only",

@@ -1,225 +1,276 @@
 # SentinelMesh
 
-SentinelMesh is a production-style hackathon MVP for a multi-agent DeFi risk copilot.
+SentinelMesh is a multi-agent DeFi risk copilot that turns natural-language DeFi intents into explainable risk analysis, route recommendations, and verifiable risk reports.
 
-Users enter an intent such as:
+> Status: hackathon-ready local v0. Final public URLs and deployed contract address must be added after deployment.
 
-```txt
-Swap 0.2 ETH to USDC safely with low slippage.
-```
+## Submission Links
 
-SentinelMesh parses the intent, runs explainable risk agents, recommends a safer route, generates a deterministic report hash, optionally stores that hash in a testnet registry, and shows report history with verification status.
+- Live app: `LIVE_APP_URL`
+- API: `API_URL`
+- Report Registry contract: `CONTRACT_ADDRESS`
+- Demo video: `DEMO_VIDEO_URL`
 
-For supported swap pairs, risk analysis also includes read-only live pool evidence such as liquidity, 24-hour volume, price movement, and pool age. External market failures fall back to deterministic policy factors.
+## What The App Does
 
-## Problem
-
-DeFi users are asked to sign complex transactions without a clear, verifiable risk trail. SentinelMesh adds a risk intelligence and verification layer before execution. V0 does not custody funds, execute swaps, or claim guaranteed MEV protection.
-
-## Product Loop
+Users describe a DeFi action in plain English, for example:
 
 ```txt
-Ask -> Parse -> Analyze -> Recommend -> Verify -> Save -> Share
+I want to swap 50 USDC to ETH on a low-risk route with minimal slippage.
 ```
 
-## Architecture
+SentinelMesh then:
+
+1. Parses the request into editable structured intent.
+2. Scores execution risk with explainable factors.
+3. Compares route options and recommends a safer action.
+4. Generates a deterministic risk report.
+5. Saves the report in history.
+6. Optionally anchors the report hash on a testnet registry when Web3 deployment metadata is configured.
+
+For supported swap pairs, the risk engine can add read-only DEX Screener liquidity, volume, price-movement, and pool-age evidence. An optional server-side 0x adapter provides a sanitized quote and read-only simulation preview without exposing calldata or broadcasting a transaction.
+
+SentinelMesh v0 does not custody funds, execute swaps, or claim guaranteed MEV protection. It is a risk intelligence and verification layer.
+
+## Final User Flow
 
 ```txt
-apps/web
-  Next.js App Router UI
-  RainbowKit/wagmi wallet connection
-  Risk dashboard, report history, verification pages
-
-apps/api
-  Express API
-  Postgres or serialized local JSON report storage
-  Agent orchestration, SIWE, live market evidence, and verification endpoints
-
-packages/shared
-  Product types and schemas
-
-packages/agents
-  IntentAgent, RiskAgent, RouteAgent, ReportAgent, VerificationAgent
-
-packages/risk-engine
-  Weighted risk model and route recommendation rules
-
-packages/web3
-  Registry ABI and testnet helpers
-
-contracts
-  Solidity SentinelReportRegistry
-  Foundry deploy script and tests
-
-data/fixtures
-  Repeatable demo scenarios and fallback risk data
+Open app -> connect wallet -> enter intent -> see risk explanation -> see route recommendation -> generate report -> open history -> verify report hash
 ```
+
+The full local flow works without a deployed contract by creating local-only reports. On-chain verification requires Satyam's deployed `SentinelReportRegistry` address and RPC metadata.
 
 ## Tech Stack
 
 - Frontend: Next.js App Router, TypeScript, Tailwind
 - Wallet/Web3: RainbowKit, wagmi, viem
-- Authentication: EIP-4361 SIWE with one-time nonces and signed HTTP-only sessions
 - API: Node.js, Express, TypeScript
 - Smart contracts: Solidity, Foundry
-- Storage: Postgres in hosted environments, serialized local JSON fallback
-- Quote evidence: optional server-side 0x AllowanceHolder quote plus read-only RPC simulation
-- AI/agents: optional Groq-backed intent/risk agents with deterministic fixture fallbacks
-- Network: Base Sepolia or Ethereum Sepolia testnet
+- Storage: Postgres in hosted environments with serialized local JSON fallback
+- Agents: custom Intent, Risk, Route, Report, and Verification agents
+- AI: optional Groq-backed intent/risk explanations with deterministic fallback
+- Quote evidence: optional server-side 0x AllowanceHolder quote and read-only RPC simulation
+- Deployment target: Vercel for frontend, Render/Railway/Fly.io for API
 
-## Setup
+## Monorepo Structure
+
+```txt
+apps/web
+  Next.js UI, wallet UI, dashboard, reports, report detail
+
+apps/api
+  Express API, report storage, agent endpoints
+
+packages/shared
+  Shared TypeScript types and Zod schemas
+
+packages/agents
+  IntentAgent, RiskAgent, RouteAgent, ReportAgent, VerificationAgent
+
+packages/risk-engine
+  Deterministic risk scoring and route rules
+
+packages/web3
+  Registry ABI, Web3 metadata adapters, transaction state helpers
+
+contracts
+  SentinelReportRegistry Solidity contract, Foundry tests, deploy script
+
+data/fixtures
+  Repeatable demo scenarios and fallback data
+
+docs
+  Architecture, deployment checklist, demo script
+```
+
+## Local Setup
 
 ```bash
 cd sentinelmesh
 cp .env.example .env
 npm install
-```
-
-Run the full app:
-
-```bash
 npm run dev
 ```
 
-Frontend: `http://localhost:3000`
+Local URLs:
 
-API: `http://localhost:4000`
+- Web: `http://localhost:3000`
+- App: `http://localhost:3000/app`
+- API: `http://localhost:4000`
+- API health: `http://localhost:4000/health`
 
-Run tests:
-
-```bash
-npm test
-```
-
-Type-check:
+Useful commands:
 
 ```bash
 npm run typecheck
+npm test
+npm run build
 ```
 
-## API
-
-Required endpoints are implemented:
-
-- `GET /health`
-- `GET /ready`
-- `GET /auth/nonce`
-- `POST /auth/verify`
-- `GET /auth/session`
-- `POST /auth/logout`
-- `POST /api/intent`
-- `POST /api/risk`
-- `POST /api/quote`
-- `POST /intent/parse`
-- `POST /risk/analyze`
-- `POST /route/recommend`
-- `POST /agents/run`
-- `POST /reports`
-- `GET /reports`
-- `GET /reports/:id`
-- `POST /reports/:id/verify`
-
-Local reports are stored at `data/reports.json`. Set `DATABASE_URL` to use the production Postgres repository; the API creates the required table and indexes idempotently.
-
-## Contracts
-
-The v0 contract only stores report hashes. It does not execute swaps.
-
-```bash
-cd contracts
-forge test
-```
-
-Deploy to Base Sepolia:
-
-```bash
-forge script script/DeploySentinelReportRegistry.s.sol \
-  --rpc-url "$BASE_SEPOLIA_RPC_URL" \
-  --private-key "$PRIVATE_KEY" \
-  --broadcast
-```
-
-After deployment, set:
-
-```bash
-REPORT_REGISTRY_ADDRESS=0x...
-REPORT_REGISTRY_CHAIN_ID=84532
-REPORT_REGISTRY_RPC_URL=https://...
-NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS=0x...
-NEXT_PUBLIC_CHAIN_ID=84532
-NEXT_PUBLIC_EXPLORER_TX_URL_TEMPLATE=https://sepolia.basescan.org/tx/{txHash}
-```
-
-See `docs/deployment.md` for the full API, frontend, and contract deployment checklist.
-
-## Demo Scenarios
-
-The app includes repeatable fixture fallbacks:
-
-1. Safe ETH -> USDC swap
-2. High-slippage risky swap
-3. Unknown token
-4. Large trade with MEV exposure
-5. Unsupported bridge request
-6. Critical risk route blocked
-
-Happy path:
-
-1. Open `/app`.
-2. Use `Swap 0.2 ETH to USDC safely with low slippage.`
-3. Run analysis.
-4. Review editable intent, risk score, factors, route recommendation, and agent trace.
-5. Connect a wallet.
-6. Generate a report.
-7. If a registry address is configured, anchor the report hash on testnet.
-8. Open the report detail page and verify the hash.
+There is no root `lint` script currently. TypeScript checks and tests are the primary automated QA commands.
 
 ## Environment Variables
 
-See `.env.example`.
+Copy `.env.example` and fill only what you need for the environment.
 
-Important variables:
+### Frontend
 
-- `ALLOWED_ORIGINS`
-- `API_RATE_LIMIT_PER_MINUTE`
-- `AUTH_ALLOWED_DOMAINS`
-- `SESSION_SECRET`
-- `NEXT_PUBLIC_API_URL`
-- `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`
-- `NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS`
-- `NEXT_PUBLIC_EXPLORER_TX_URL_TEMPLATE`
-- `GROQ_API_KEY`
-- `GROQ_MODEL`
-- `DATABASE_URL`
-- `DATABASE_SSL`
-- `ZEROX_API_KEY`
-- `ETHEREUM_MAINNET_RPC_URL`
-- `BASE_MAINNET_RPC_URL`
-- `REPORT_REGISTRY_ADDRESS`
-- `REPORT_REGISTRY_RPC_URL`
-- `BASE_SEPOLIA_RPC_URL`
-- `PRIVATE_KEY`
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:4000
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
+NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS=
+NEXT_PUBLIC_CHAIN_ID=84532
+NEXT_PUBLIC_EXPLORER_TX_URL_TEMPLATE=https://sepolia.basescan.org/tx/{txHash}
+NEXT_PUBLIC_EXPLORER_LABEL=BaseScan
+```
 
-Never commit real private keys, seed phrases, or RPC secrets.
+`NEXT_PUBLIC_API_URL` must point to the deployed API URL in production. If it is missing locally, the web app safely falls back to `http://localhost:4000`.
 
-## Limitations
+`NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS` can stay empty before contract deployment. The UI will show local-only/report-not-configured states instead of breaking.
 
-- V0 uses Groq for intent parsing and risk explanation when `GROQ_API_KEY` is configured; otherwise it falls back to deterministic parsing and fixture-backed risk data.
-- Local JSON storage is reliable for a single API instance. Hosted deployments should set `DATABASE_URL` so all instances share Postgres.
-- The optional 0x adapter is a read-only mainnet quote preview for allowlisted token pairs. It never returns calldata to the browser or broadcasts a transaction.
-- Report verification checks the local report hash against the registry when API RPC metadata is configured. Local development can still run without RPC metadata.
-- Wallet-owned report creation requires a matching authenticated SIWE session. Public report viewing remains shareable.
-- Report scores and recommendations are recomputed by the API. Client-supplied risk fields are rejected.
-- Wallet-owned reports are filtered from other users' history; direct report links remain shareable.
-- DEX Screener evidence is read-only and never treated as an executable route guarantee.
-- JSON persistence is serialized behind a repository interface so concurrent writes cannot overwrite reports; Postgres remains the deployment target for horizontal scaling.
-- The registry rejects zero hashes, invalid scores, empty metadata, and duplicate hashes from the same user.
+### API
+
+```bash
+PORT=4000
+REPORTS_DB_PATH=data/reports.json
+DATABASE_URL=
+DATABASE_SSL=disable
+ALLOWED_ORIGINS=http://localhost:3000
+AUTH_ALLOWED_DOMAINS=localhost:3000
+SESSION_SECRET=
+GROQ_API_KEY=
+GROQ_MODEL=llama-3.1-8b-instant
+ZEROX_API_KEY=
+ETHEREUM_MAINNET_RPC_URL=
+BASE_MAINNET_RPC_URL=
+REPORT_REGISTRY_ADDRESS=
+REPORT_REGISTRY_CHAIN_ID=84532
+REPORT_REGISTRY_RPC_URL=
+ALLOW_CLIENT_SUPPLIED_ONCHAIN_HASH=false
+```
+
+`REPORT_REGISTRY_RPC_URL` lets the API verify reports by reading `SentinelReportRegistry.getUserReports(user)`.
+
+### Contracts
+
+```bash
+BASE_SEPOLIA_RPC_URL=
+SEPOLIA_RPC_URL=
+PRIVATE_KEY=
+```
+
+Never commit real private keys, seed phrases, RPC secrets, or production API keys.
+
+## Frontend Deployment
+
+Deploy `apps/web` to Vercel.
+
+Recommended settings:
+
+- Framework: Next.js
+- Root directory: `apps/web`
+- Install command: `npm install`
+- Build command: `npm run build -w @sentinelmesh/web`
+- Output: Next.js default
+
+Required Vercel env:
+
+```bash
+NEXT_PUBLIC_API_URL=https://your-api.example.com
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=...
+NEXT_PUBLIC_REPORT_REGISTRY_ADDRESS=0x... # add after Satyam deploys
+NEXT_PUBLIC_EXPLORER_TX_URL_TEMPLATE=https://sepolia.basescan.org/tx/{txHash}
+NEXT_PUBLIC_EXPLORER_LABEL=BaseScan
+```
+
+## API Deployment
+
+Deploy `apps/api` to Render, Railway, Fly.io, or another Node host.
+
+Recommended settings:
+
+- Root directory: repository root or `apps/api` depending on host
+- Install command: `npm install`
+- Build command: `npm run build -w @sentinelmesh/api`
+- Start command: `npm run start -w @sentinelmesh/api`
+
+Required backend env:
+
+```bash
+PORT=4000
+REPORTS_DB_PATH=data/reports.json
+GROQ_API_KEY=...
+GROQ_MODEL=llama-3.1-8b-instant
+REPORT_REGISTRY_ADDRESS=0x... # add after Satyam deploys
+REPORT_REGISTRY_CHAIN_ID=84532
+REPORT_REGISTRY_RPC_URL=https://...
+ALLOW_CLIENT_SUPPLIED_ONCHAIN_HASH=false
+```
+
+## Contract Address Placeholder
+
+Final deployed contract address will be added after Satyam deploys `SentinelReportRegistry`.
+
+```txt
+CONTRACT_ADDRESS=CONTRACT_ADDRESS
+NETWORK=Base Sepolia or selected testnet
+EXPLORER_URL=...
+```
+
+Until this is configured, SentinelMesh still supports local report generation and honest local-only verification states.
+
+## Demo Flow
+
+Safe scenario:
+
+```txt
+I want to swap 50 USDC to ETH on a low-risk route with minimal slippage.
+```
+
+Risky scenario:
+
+```txt
+I want to bridge 5000 USDC to a new high-yield protocol on an unfamiliar chain.
+```
+
+Judge walkthrough:
+
+1. Open `LIVE_APP_URL` or `/app` locally.
+2. Connect wallet if Web3 metadata is configured.
+3. Enter the safe scenario.
+4. Parse intent.
+5. Run risk analysis.
+6. Review risk score, explanations, route cards, and agent timeline.
+7. Generate a report.
+8. Open `/reports`.
+9. Open the report detail page.
+10. Show copy link, copy hash, JSON download, and verification status.
+
+See `docs/demo-script.md` for the 2-minute narration and screenshot checklist.
+See `docs/deployment-architecture.md` for the full component-by-component deployment architecture.
+
+## Known Limitations
+
+- Contract verification requires a deployed testnet registry address and API RPC metadata.
+- Final public app URL, API URL, contract address, and demo video URL must be added after deployment.
+- The 0x adapter is read-only and supports only allowlisted pairs; signed quote evidence is not yet persisted in reports.
+- Local JSON storage is intended for a single local API instance. Hosted deployments should configure Postgres.
 - Testnet-only report anchoring. No swap execution path is implemented.
-- The registry stores report metadata; it does not custody funds or execute swaps.
+- SentinelMesh estimates risk; it does not guarantee MEV protection or fully secure execution.
 
-## Roadmap
+## Submission Readiness Checklist
 
-- Persist signed quote evidence in report payloads after provider-specific normalization.
-- Add explorer-indexed report history by wallet.
-- Add protected route adapter integrations without claiming guaranteed MEV prevention.
-- Add end-to-end browser tests for the full demo flow.
+- `npm run typecheck` passes.
+- `npm test` passes.
+- `npm run build` passes.
+- `/app` loads from a clean browser.
+- Intent parsing works.
+- Risk cards render.
+- Route cards render.
+- Report generates.
+- `/reports` shows the saved report.
+- Report detail opens.
+- Copy link/hash works.
+- JSON download works.
+- Web3 verification state is honest when registry metadata is missing.
+- `LIVE_APP_URL`, `API_URL`, `CONTRACT_ADDRESS`, and `DEMO_VIDEO_URL` are filled before final submission.
