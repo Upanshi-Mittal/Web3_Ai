@@ -1,17 +1,23 @@
-import type { AgentResult, DeFiIntent, QuotePreview, RiskAnalysis, RouteAnalysis, RouteOption, SentinelReport } from "@sentinelmesh/shared";
+import type {
+  AgentResult,
+  AgentWalletPolicy,
+  DecodedTransaction,
+  DeFiIntent,
+  FirewallEvaluation,
+  OrchestrationRun,
+  QuotePreview,
+  RawTransactionInput,
+  RiskAnalysis,
+  RouteAnalysis,
+  RouteOption,
+  SentinelReport
+} from "@sentinelmesh/shared";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api/backend";
+const API_PROXY_URL = "/api/backend";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers
-    },
-    cache: "no-store",
-    credentials: "include"
-  });
+  const response = await fetchWithProxyFallback(path, init);
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: response.statusText }));
@@ -19,6 +25,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+async function fetchWithProxyFallback(path: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(`${API_URL}${path}`, requestInit(init));
+  } catch (error) {
+    if (API_URL === API_PROXY_URL) throw error;
+    return fetch(`${API_PROXY_URL}${path}`, requestInit(init));
+  }
+}
+
+function requestInit(init?: RequestInit): RequestInit {
+  return {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...init?.headers
+    },
+    cache: "no-store",
+    credentials: "include"
+  };
 }
 
 export type AgentRunResponse = {
@@ -59,7 +86,7 @@ export const api = {
   verifyAuth(message: string, signature: string) {
     return request<{ authenticated: true; user: AuthUser }>("/auth/verify", {
       method: "POST",
-      body: JSON.stringify({ message, signature })
+      body: JSON.stringify({ message: String(message), signature: String(signature) })
     });
   },
   getAuthSession() {
@@ -98,11 +125,30 @@ export const api = {
       body: JSON.stringify({ intent, takerAddress })
     });
   },
+  decodeTransaction(transaction: RawTransactionInput) {
+    return request<{ decodedTransaction: DecodedTransaction }>("/api/transaction/decode", {
+      method: "POST",
+      body: JSON.stringify({ transaction })
+    });
+  },
+  evaluateFirewall(intent: DeFiIntent, analysis?: RiskAnalysis, policy?: AgentWalletPolicy, rawTransaction?: RawTransactionInput) {
+    return request<{ evaluation: FirewallEvaluation; quote: QuotePreview; analysis: RiskAnalysis }>("/api/firewall", {
+      method: "POST",
+      body: JSON.stringify({ intent, analysis, policy, rawTransaction })
+    });
+  },
+  runOrchestration(prompt: string, policy?: AgentWalletPolicy, rawTransaction?: RawTransactionInput) {
+    return request<OrchestrationRun>("/api/orchestrations/run", {
+      method: "POST",
+      body: JSON.stringify({ prompt, policy, rawTransaction })
+    });
+  },
   createReport(input: {
     prompt: string;
     parsedIntent: DeFiIntent;
     selectedRouteId: string;
     userAddress?: string;
+    policy?: AgentWalletPolicy;
   }) {
     return request<SentinelReport>("/reports", {
       method: "POST",

@@ -20,9 +20,9 @@ export function IntentCard({
 }) {
   if (!intent) {
     return (
-      <div className="rounded-lg border border-dashed border-border bg-white/55 p-5">
-        <h2 className="font-semibold text-ink">Parsed Intent</h2>
-        <p className="mt-3 text-sm text-muted">Submit an intent to review the structured fields before analysis.</p>
+      <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.05] p-5 text-white backdrop-blur">
+        <h2 className="font-black text-white">Parsed Intent</h2>
+        <p className="mt-3 text-sm text-white/50">Submit an intent to review the structured fields before analysis.</p>
       </div>
     );
   }
@@ -44,15 +44,15 @@ export function IntentCard({
   }
 
   return (
-    <div className="surface rounded-lg p-5">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-5 text-white shadow-[0_18px_70px_rgba(0,0,0,0.18)] backdrop-blur">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="eyebrow">Step 02</div>
-          <h2 className="mt-1 font-semibold text-ink">Review parsed intent</h2>
-          <p className="mt-1 text-xs text-muted">Corrections reset downstream analysis so the report remains internally consistent.</p>
+          <div className="text-[11px] font-black uppercase text-[#a8ff8d]">Step 02</div>
+          <h2 className="mt-1 font-black text-white">Review parsed intent</h2>
+          <p className="mt-1 text-xs text-white/50">Corrections reset downstream analysis so the report remains internally consistent.</p>
         </div>
         {intent.action === "unsupported" && (
-          <span className="rounded-md border border-warning/30 bg-amber-50 px-2 py-1 text-xs text-warning">Unsupported</span>
+          <span className="rounded-md border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-xs text-amber-100">Unsupported</span>
         )}
       </div>
 
@@ -76,13 +76,13 @@ export function IntentCard({
           onChange={(value) => updateConstraint("riskTolerance", value as RiskTolerance | "")}
         />
       </div>
-      <div className="mt-5 flex items-center justify-between gap-3 border-t border-border pt-4">
-        <p className="text-xs text-muted">Analysis uses the reviewed values above.</p>
+      <div className="mt-5 flex items-center justify-between gap-3 border-t border-white/10 pt-4">
+        <p className="text-xs text-white/50">Analysis uses the reviewed values above.</p>
         <button
           type="button"
           onClick={onAnalyze}
           disabled={analyzing}
-          className="inline-flex shrink-0 items-center gap-2 rounded-md bg-ink px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex shrink-0 items-center gap-2 rounded-full bg-[#7eed61] px-4 py-2.5 text-sm font-black text-black hover:bg-[#a8ff8d] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {analyzing ? <Loader2 className="animate-spin" size={16} /> : <ShieldCheck size={16} />}
           {analyzing ? "Analyzing..." : "Analyze risk"}
@@ -94,12 +94,12 @@ export function IntentCard({
 
 function TextField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <label className="text-xs font-medium text-muted">
+    <label className="text-xs font-semibold text-white/50">
       {label}
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-md border border-border bg-panel2 p-2.5 text-sm text-ink outline-none focus:border-teal/60"
+        className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 p-2.5 text-sm text-white outline-none focus:border-[#7eed61]/50"
       />
     </label>
   );
@@ -119,12 +119,12 @@ function SelectField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="text-xs font-medium text-muted">
+    <label className="text-xs font-semibold text-white/50">
       {label}
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-md border border-border bg-panel2 p-2.5 text-sm text-ink outline-none focus:border-teal/60"
+        className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 p-2.5 text-sm text-white outline-none focus:border-[#7eed61]/50"
       >
         {options.map((option) => (
           <option key={option || "empty"} value={option}>

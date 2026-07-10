@@ -47,14 +47,40 @@ test("API enforces SIWE ownership, server-authoritative reports, and history pri
       selectedRouteId: "swap-protected-review"
     });
     assert.equal(anonymous.status, 201);
-    const anonymousReport = await anonymous.json() as { id: string; riskScore: number };
+    const anonymousReport = await anonymous.json() as {
+      id: string;
+      riskScore: number;
+      evidenceReceipt?: { evidenceHash: string };
+      firewallEvaluation?: { decision: string };
+    };
     assert.notEqual(anonymousReport.riskScore, 1);
+    assert.equal(anonymousReport.firewallEvaluation?.decision, "ALLOW");
+    assert.match(anonymousReport.evidenceReceipt?.evidenceHash ?? "", /^0x[a-f0-9]{64}$/);
 
     const quote = await post(baseUrl, "/api/quote", { intent });
     assert.equal(quote.status, 200);
     const quoteBody = await quote.json() as { provider: string; status: string };
     assert.equal(quoteBody.provider, "fixture");
     assert.equal(quoteBody.status, "fallback");
+
+    const orchestration = await post(baseUrl, "/api/orchestrations/run", {
+      prompt: "Swap 0.2 ETH to USDC safely with low slippage"
+    });
+    assert.equal(orchestration.status, 200);
+    const orchestrationBody = await orchestration.json() as {
+      status: string;
+      mode: string;
+      steps: Array<{ id: string; status: string }>;
+      gates: Array<{ id: string; status: string }>;
+      nextActions: string[];
+      firewallEvaluation?: { decision: string };
+    };
+    assert.equal(orchestrationBody.mode, "simulation");
+    assert.ok(["completed", "needs-review", "blocked"].includes(orchestrationBody.status));
+    assert.ok(orchestrationBody.steps.some((step) => step.id === "firewall"));
+    assert.ok(orchestrationBody.gates.some((gate) => gate.id === "firewall-policy"));
+    assert.ok(orchestrationBody.nextActions.length > 0);
+    assert.equal(orchestrationBody.firewallEvaluation?.decision, "ALLOW");
 
     const nonceResponse = await fetch(`${baseUrl}/auth/nonce`);
     const { nonce } = await nonceResponse.json() as { nonce: string };

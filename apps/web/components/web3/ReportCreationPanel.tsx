@@ -29,27 +29,27 @@ export function ReportCreationPanel({
   onCreate: () => void;
 }) {
   return (
-    <div className="surface rounded-lg p-5">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-5 text-white shadow-[0_18px_70px_rgba(0,0,0,0.18)] backdrop-blur">
       <div className="flex items-center gap-2">
-        <Database className="text-violet" size={18} />
+        <Database className="text-[#a8ff8d]" size={18} />
         <div>
-          <div className="eyebrow text-violet">Evidence</div>
-          <h2 className="mt-1 font-semibold text-ink">Generate report</h2>
+          <div className="text-[11px] font-black uppercase text-[#a8ff8d]">Evidence</div>
+          <h2 className="mt-1 font-black text-white">Generate report</h2>
         </div>
       </div>
-      <p className="mt-3 text-sm leading-6 text-muted">
+      <p className="mt-3 text-sm leading-6 text-white/60">
         Creates a deterministic report first, then optionally anchors only its hash in the testnet registry.
       </p>
 
-      <div className="mt-4 grid grid-cols-2 rounded-md border border-border bg-panel2 p-1">
+      <div className="mt-4 grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1">
         {(["Simulation Only", "Report On-chain"] as ExecutionMode[]).map((option) => (
           <button
             type="button"
             key={option}
             onClick={() => onModeChange(option)}
             className={cn(
-              "rounded px-2 py-2 text-xs font-semibold transition",
-              mode === option ? "bg-white text-ink shadow-sm" : "text-muted hover:text-ink"
+              "rounded-lg px-2 py-2 text-xs font-bold transition",
+              mode === option ? "bg-[#7eed61] text-black shadow-[0_0_18px_rgba(126,237,97,0.22)]" : "text-white/50 hover:text-white"
             )}
           >
             {option}
@@ -57,13 +57,13 @@ export function ReportCreationPanel({
         ))}
       </div>
 
-      <div className="mt-4 rounded-md border border-border bg-panel2 p-3 text-xs leading-5 text-muted">
-        Target adapter: <span className="font-semibold text-ink">{selectedNetwork.label}</span>
+      <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-white/50">
+        Target adapter: <span className="font-semibold text-white">{selectedNetwork.label}</span>
         {selectedNetwork.isPlaceholder && <span> placeholder metadata</span>}
       </div>
 
       {mode === "Report On-chain" && !onChainReady && (
-        <div className="mt-3 rounded-md border border-warning/20 bg-amber-50 p-3 text-xs leading-5 text-warning">
+        <div className="mt-3 rounded-xl border border-amber-300/25 bg-amber-400/10 p-3 text-xs leading-5 text-amber-100">
           Connect and authenticate a wallet, switch to {selectedNetwork.label}, and configure the deployed registry before anchoring.
         </div>
       )}
@@ -71,7 +71,7 @@ export function ReportCreationPanel({
       <button
         onClick={onCreate}
         disabled={!canCreate || creating}
-        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-ink px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-teal disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#7eed61] px-4 py-3 text-sm font-black text-black shadow-[0_0_24px_rgba(126,237,97,0.25)] hover:bg-[#a8ff8d] disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Save size={17} />
         {creating ? "Creating..." : "Generate Report"}
@@ -82,13 +82,13 @@ export function ReportCreationPanel({
       </div>
 
       {report && (
-        <div className="mt-4 rounded-md border border-success/20 bg-emerald-50 p-3 text-sm text-success">
+        <div className="mt-4 rounded-xl border border-[#7eed61]/25 bg-[#7eed61]/10 p-3 text-sm text-[#a8ff8d]">
           <div className="flex items-center gap-2 font-semibold">
             <BadgeCheck size={18} />
             Report saved
           </div>
           <div className="mt-2 text-xs">{shortHash(report.reportHash)}</div>
-          <Link className="mt-3 inline-flex text-sm font-semibold text-ink underline" href={`/reports/${report.id}`}>
+          <Link className="mt-3 inline-flex text-sm font-semibold text-white underline" href={`/reports/${report.id}`}>
             Open report detail
           </Link>
         </div>

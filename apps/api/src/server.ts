@@ -1,7 +1,8 @@
 import cors from "cors";
 import express from "express";
 import morgan from "morgan";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,14 +23,22 @@ import { analyzeRisk, recommendRoute } from "@sentinelmesh/risk-engine";
 import { sentinelReportRegistryAbi, supportedChains } from "@sentinelmesh/web3";
 import {
   DeFiIntentRequestSchema,
+  FirewallEvaluateRequestSchema,
   IntentPromptSchema,
+  OrchestrationRunRequestSchema,
   QuotePreviewRequestSchema,
+  RawTransactionDecodeRequestSchema,
   ReportCreateRequestSchema,
   RouteAgentRequestSchema,
   type AgentResult,
   type DeFiIntent,
+  type FirewallEvaluation,
   type FixtureScenario,
+  type RawTransactionInput,
   type RiskAnalysis,
+  type OrchestrationGate,
+  type OrchestrationRun,
+  type OrchestrationStep,
   type RouteAnalysis,
   type RouteOption,
   type RouteRecommendation,
@@ -37,14 +46,18 @@ import {
   type SentinelReport
 } from "@sentinelmesh/shared";
 import { createAuthService } from "./auth.js";
+import { evaluateFirewall } from "./firewall.js";
 import { applyMarketEvidence, inspectMarket } from "./market-intelligence.js";
 import { getQuotePreview } from "./quote-adapter.js";
 import { createReportRepository } from "./report-repository.js";
+import { decodeRawTransaction } from "./transaction-decoder.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(__dirname, "../../..");
+loadEnvFile(path.resolve(repoRoot, ".env"));
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, "../../..");
 const reportsPath = path.resolve(repoRoot, process.env.REPORTS_DB_PATH ?? "data/reports.json");
 const reportRepositoryPromise = createReportRepository({
   jsonPath: reportsPath,
@@ -128,8 +141,8 @@ app.get("/auth/nonce", (_req, res) => {
 
 app.post("/auth/verify", async (req, res, next) => {
   try {
-    const message = typeof req.body?.message === "string" ? req.body.message : "";
-    const signature = typeof req.body?.signature === "string" ? req.body.signature : "";
+    const message = readAuthString(req.body?.message);
+    const signature = readAuthString(req.body?.signature);
     if (!message || !isHex(signature)) return res.status(400).json({ error: "Valid SIWE message and signature are required" });
 
     const session = await authService.verifySiwe({ message, signature: signature as Hex });
@@ -230,6 +243,35 @@ app.post("/api/quote", async (req, res, next) => {
   }
 });
 
+app.post("/api/transaction/decode", async (req, res, next) => {
+  try {
+    const { transaction } = RawTransactionDecodeRequestSchema.parse(req.body);
+    return res.json({ decodedTransaction: decodeRawTransaction(transaction as RawTransactionInput) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/firewall", async (req, res, next) => {
+  try {
+    const { intent, analysis, rawTransaction, policy } = FirewallEvaluateRequestSchema.parse(req.body);
+    const session = getAuthSession(req);
+    const authoritativeAnalysis = analysis ?? (await runAuthoritativeRisk(intent)).analysis;
+    const quote = await getQuotePreview(intent, session?.address);
+    const decodedTransaction = rawTransaction ? decodeRawTransaction(rawTransaction as RawTransactionInput) : undefined;
+    const evaluation = evaluateFirewall({
+      intent,
+      analysis: authoritativeAnalysis,
+      quote,
+      decodedTransaction,
+      policy
+    });
+    return res.json({ evaluation, quote, analysis: authoritativeAnalysis });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/route/recommend", async (req, res, next) => {
   try {
     const context = await contextFromBody(req.body);
@@ -246,6 +288,111 @@ app.post("/agents/run", async (req, res, next) => {
   try {
     const prompt = requirePrompt(req.body);
     res.json(await runAgents({ prompt, fixtures: await loadFixtures() }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/orchestrations/run", async (req, res, next) => {
+  try {
+    const body = OrchestrationRunRequestSchema.parse(req.body);
+    const startedAt = new Date().toISOString();
+    const steps: OrchestrationStep[] = [];
+    const agentTrace: AgentResult[] = [];
+    const session = getAuthSession(req);
+
+    const intentResult = await timedStep(steps, {
+      id: "intent",
+      label: "Parse natural-language intent",
+      agentName: "IntentAgent",
+      dependencies: [],
+      run: async () => IntentAgent.run({ prompt: body.prompt, fixtures: await loadFixtures() })
+    });
+    agentTrace.push(intentResult);
+
+    const riskResult = await timedStep(steps, {
+      id: "risk",
+      label: "Score transaction risk",
+      agentName: "RiskAgent",
+      dependencies: ["intent"],
+      run: async () => (await runAuthoritativeRisk(intentResult.output)).agent
+    });
+    agentTrace.push(riskResult);
+
+    const routeResult = await timedStep(steps, {
+      id: "route",
+      label: "Build route recommendation set",
+      agentName: "RouteAgent",
+      dependencies: ["risk"],
+      run: () => runRouteAgent(intentResult.output, riskResult.output)
+    });
+    agentTrace.push(routeResult);
+
+    const quoteStart = Date.now();
+    const quoteStartedAt = new Date().toISOString();
+    const quotePreview = await getQuotePreview(intentResult.output, session?.address);
+    steps.push({
+      id: "quote",
+      label: "Attach quote and simulation evidence",
+      agentName: "QuoteAdapter",
+      status: quotePreview.status === "live" ? "completed" : "warning",
+      dependencies: ["route"],
+      startedAt: quoteStartedAt,
+      completedAt: new Date().toISOString(),
+      durationMs: Date.now() - quoteStart,
+      summary:
+        quotePreview.status === "live"
+          ? "Live quote evidence attached to the run."
+          : "Used fallback quote evidence so the orchestration remains demoable."
+    });
+
+    const firewallStart = Date.now();
+    const firewallStartedAt = new Date().toISOString();
+    const decodedTransaction = body.rawTransaction ? decodeRawTransaction(body.rawTransaction as RawTransactionInput) : undefined;
+    const firewallEvaluation = evaluateFirewall({
+      intent: intentResult.output,
+      analysis: riskResult.output,
+      quote: quotePreview,
+      decodedTransaction,
+      policy: body.policy
+    });
+    steps.push({
+      id: "firewall",
+      label: "Evaluate policy and signing firewall",
+      agentName: "FirewallOrchestrator",
+      status: firewallEvaluation.decision === "BLOCK" ? "blocked" : firewallEvaluation.decision === "WARN" ? "warning" : "completed",
+      dependencies: ["quote"],
+      startedAt: firewallStartedAt,
+      completedAt: new Date().toISOString(),
+      durationMs: Date.now() - firewallStart,
+      summary: firewallEvaluation.summary
+    });
+
+    const selectedRouteId = routeResult.output.selectedRouteId ?? routeResult.output.recommendedRouteId ?? routeResult.output.routes[0]?.routeId;
+    const gates = buildOrchestrationGates(riskResult.output, routeResult.output, firewallEvaluation);
+    const blocked = gates.some((gate) => gate.status === "block");
+    const warned = gates.some((gate) => gate.status === "warn");
+    const completedAt = new Date().toISOString();
+    const run: OrchestrationRun = {
+      runId: randomUUID(),
+      status: blocked ? "blocked" : warned ? "needs-review" : "completed",
+      mode: "simulation",
+      prompt: body.prompt,
+      parsedIntent: intentResult.output,
+      riskAnalysis: riskResult.output,
+      routeAnalysis: routeResult.output,
+      quotePreview,
+      firewallEvaluation,
+      selectedRouteId,
+      agentTrace,
+      steps,
+      gates,
+      nextActions: buildOrchestrationNextActions(blocked, warned, firewallEvaluation.decision),
+      summary: buildOrchestrationSummary(blocked, warned, riskResult.output, firewallEvaluation.decision),
+      startedAt,
+      completedAt
+    };
+    res.json(run);
   } catch (error) {
     next(error);
   }
@@ -278,12 +425,21 @@ app.post("/reports", async (req, res, next) => {
     const selectedRoute = routeResult.output.routes.find((route) => route.routeId === body.selectedRouteId);
     if (!selectedRoute) return res.status(400).json({ error: "Selected route is not valid for the server-computed analysis" });
     const routeRecommendation = routeOptionToRecommendation(routeResult.output, selectedRoute);
+    const quotePreview = await getQuotePreview(parsedIntent, authenticatedUserAddress);
+    const firewallEvaluation = evaluateFirewall({
+      intent: parsedIntent,
+      analysis: riskResult.output,
+      quote: quotePreview,
+      policy: body.policy
+    });
 
     const reportContext: AgentContext = {
       prompt,
       parsedIntent,
       riskAnalysis: riskResult.output,
       routeRecommendation,
+      evidenceReceipt: firewallEvaluation.transactionPreview.evidence,
+      firewallEvaluation,
       userAddress: authenticatedUserAddress,
       fixtures: await loadFixtures()
     };
@@ -321,6 +477,130 @@ function routeOptionType(route: RouteOption): RouteType {
   if (route.routeId.includes("protected")) return "PROTECTED_ROUTE";
   if (route.decision === "report-only" || route.routeId.includes("report")) return "DELAYED_EXECUTION";
   return "STANDARD_ROUTE";
+}
+
+async function timedStep<TOutput>(
+  steps: OrchestrationStep[],
+  config: {
+    id: string;
+    label: string;
+    agentName: string;
+    dependencies: string[];
+    run: () => Promise<AgentResult<TOutput>>;
+  }
+): Promise<AgentResult<TOutput>> {
+  const startedAt = new Date().toISOString();
+  const started = Date.now();
+  try {
+    const result = await config.run();
+    steps.push({
+      id: config.id,
+      label: config.label,
+      agentName: config.agentName,
+      dependencies: config.dependencies,
+      status: result.status === "failed" ? "failed" : result.status === "warning" ? "warning" : "completed",
+      startedAt,
+      completedAt: new Date().toISOString(),
+      durationMs: Date.now() - started,
+      summary: result.reasoning[0] ?? `${config.agentName} completed.`
+    });
+    return result;
+  } catch (error) {
+    steps.push({
+      id: config.id,
+      label: config.label,
+      agentName: config.agentName,
+      dependencies: config.dependencies,
+      status: "failed",
+      startedAt,
+      completedAt: new Date().toISOString(),
+      durationMs: Date.now() - started,
+      summary: error instanceof Error ? error.message : `${config.agentName} failed.`
+    });
+    throw error;
+  }
+}
+
+function buildOrchestrationGates(
+  risk: RiskAnalysis,
+  routeAnalysis: RouteAnalysis,
+  firewall: FirewallEvaluation
+): OrchestrationGate[] {
+  const selectedRoute = routeAnalysis.routes.find((route) => route.routeId === routeAnalysis.selectedRouteId || route.routeId === routeAnalysis.recommendedRouteId);
+  return [
+    {
+      id: "intent-supported",
+      label: "Intent supported",
+      status: selectedRoute?.decision === "fallback" ? "block" : "pass",
+      reason: selectedRoute?.decision === "fallback" ? "The request is outside the v0 execution policy." : "The request maps to a supported v0 review path."
+    },
+    {
+      id: "risk-threshold",
+      label: "Risk threshold",
+      status: risk.riskScore > 85 ? "block" : risk.riskScore > 55 ? "warn" : "pass",
+      reason: `Risk score is ${risk.riskScore}/100 (${risk.riskLevel}).`
+    },
+    {
+      id: "route-available",
+      label: "Route available",
+      status: routeGateStatus(selectedRoute),
+      reason: selectedRoute ? selectedRoute.recommendationReason : "No route candidate was selected."
+    },
+    {
+      id: "firewall-policy",
+      label: "Firewall policy",
+      status: firewall.decision === "BLOCK" ? "block" : firewall.decision === "WARN" ? "warn" : "pass",
+      reason: firewall.summary
+    },
+    {
+      id: "report-readiness",
+      label: "Report readiness",
+      status: firewall.decision === "BLOCK" ? "warn" : "pass",
+      reason:
+        firewall.decision === "BLOCK"
+          ? "A local evidence report can still be saved, but execution should remain blocked."
+          : "The run has enough deterministic evidence for a local verifiable report."
+    }
+  ];
+}
+
+function routeGateStatus(route?: RouteOption): OrchestrationGate["status"] {
+  if (!route || route.decision === "fallback" || route.riskScore > 85) return "block";
+  if (route.decision === "report-only") return "warn";
+  return "pass";
+}
+
+function buildOrchestrationNextActions(blocked: boolean, warned: boolean, decision: FirewallEvaluation["decision"]) {
+  if (blocked || decision === "BLOCK") {
+    return [
+      "Do not ask the wallet to sign this transaction.",
+      "Review the blocking policy violations and scam-pattern matches.",
+      "Generate a local evidence report for audit/history if needed."
+    ];
+  }
+  if (warned || decision === "WARN") {
+    return [
+      "Require human approval before signing.",
+      "Prefer the recommended lower-risk route.",
+      "Save a report before continuing."
+    ];
+  }
+  return [
+    "Proceed in simulation/report mode.",
+    "Save a local report hash.",
+    "Anchor the hash on Base Sepolia later when faucet funding is available."
+  ];
+}
+
+function buildOrchestrationSummary(
+  blocked: boolean,
+  warned: boolean,
+  risk: RiskAnalysis,
+  decision: FirewallEvaluation["decision"]
+) {
+  if (blocked) return `Orchestration blocked signing: firewall=${decision}, risk=${risk.riskScore}/100.`;
+  if (warned) return `Orchestration needs review before signing: firewall=${decision}, risk=${risk.riskScore}/100.`;
+  return `Orchestration completed in simulation mode: firewall=${decision}, risk=${risk.riskScore}/100.`;
 }
 
 async function runAuthoritativeRisk(intent: DeFiIntent) {
@@ -470,6 +750,33 @@ function serializeAuthCookie(token: string, expiresAt: number) {
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
   const maxAge = expiresAt > Date.now() ? Math.floor((expiresAt - Date.now()) / 1000) : 0;
   return `${authCookieName}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+}
+
+function readAuthString(value: unknown) {
+  if (typeof value === "string") return value.trim();
+  if (!value || typeof value !== "object") return "";
+  const wrapped = value as { message?: unknown; signature?: unknown; value?: unknown };
+  if (typeof wrapped.message === "string") return wrapped.message.trim();
+  if (typeof wrapped.signature === "string") return wrapped.signature.trim();
+  if (typeof wrapped.value === "string") return wrapped.value.trim();
+  return "";
+}
+
+function loadEnvFile(filePath: string) {
+  try {
+    const contents = readFileSync(filePath, "utf8");
+    for (const rawLine of contents.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("#")) continue;
+      const separator = line.indexOf("=");
+      if (separator <= 0) continue;
+      const key = line.slice(0, separator).trim();
+      const value = line.slice(separator + 1).trim().replace(/^["']|["']$/g, "");
+      if (!process.env[key]) process.env[key] = value;
+    }
+  } catch {
+    // Local development can run without a .env file; production should provide real environment variables.
+  }
 }
 
 function getSessionSecret() {
