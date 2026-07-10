@@ -18,7 +18,7 @@ export function MarketEvidence({ evidence }: { evidence?: MarketEvidenceType }) 
       </div>
 
       {live ? (
-        <div className="mt-4 grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-4">
+        <div className="mt-4 grid gap-px overflow-hidden rounded-md border border-white/10 bg-white/10 sm:grid-cols-4">
           <Metric icon={<Droplets size={15} />} label="Liquidity" value={formatUsd(evidence.liquidityUsd)} />
           <Metric icon={<Activity size={15} />} label="24h volume" value={formatUsd(evidence.volume24hUsd)} />
           <Metric icon={<Activity size={15} />} label="24h change" value={formatPercent(evidence.priceChange24h)} />
@@ -43,9 +43,9 @@ export function MarketEvidence({ evidence }: { evidence?: MarketEvidenceType }) 
 
 function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="bg-white p-3">
-      <div className="flex items-center gap-1.5 text-[11px] text-muted">{icon}{label}</div>
-      <div className="mt-1 text-sm font-semibold text-ink">{value}</div>
+    <div className="bg-[#101d1a]/90 p-3">
+      <div className="flex items-center gap-1.5 text-[11px] text-white/55">{icon}{label}</div>
+      <div className="mt-1 text-sm font-semibold text-[#a8ff8d]">{value}</div>
     </div>
   );
 }

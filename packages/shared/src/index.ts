@@ -266,15 +266,6 @@ export const RouteAgentRequestSchema = z.object({
   analysis: RiskAnalysisSchema
 });
 
-export const ReportCreateRequestSchema = z
-  .object({
-    prompt: IntentPromptSchema.shape.prompt,
-    parsedIntent: DeFiIntentSchema,
-    selectedRouteId: z.string().trim().min(1).max(120),
-    userAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid wallet address").optional()
-  })
-  .strict();
-
 export const QuotePreviewRequestSchema = z
   .object({
     intent: DeFiIntentSchema,
@@ -303,6 +294,244 @@ export type QuotePreview = {
   notes: string[];
 };
 
+export type FirewallDecision = "ALLOW" | "WARN" | "BLOCK";
+
+export type AgentWalletPolicy = {
+  maxSlippagePercent: number;
+  maxTransactionUsd: number;
+  allowedTokens: string[];
+  allowedProtocols: string[];
+  allowBridges: boolean;
+  allowUnlimitedApprovals: boolean;
+  minLiquidityUsd: number;
+  minPoolAgeDays: number;
+  requireVerifiedContracts: boolean;
+  riskBlockThreshold: number;
+  riskWarnThreshold: number;
+};
+
+export type PolicyViolation = {
+  ruleId: string;
+  severity: "warning" | "blocking";
+  title: string;
+  detail: string;
+};
+
+export type ScamPatternMatch = {
+  patternId: string;
+  severity: "info" | "warning" | "critical";
+  title: string;
+  evidence: string[];
+  recommendation: string;
+};
+
+export type AgentGuardrailState = {
+  killSwitchTriggered: boolean;
+  humanApprovalRequired: boolean;
+  reason: string;
+};
+
+export type WalletHealthScore = {
+  score: number;
+  level: "Healthy" | "Watch" | "At Risk" | "Critical";
+  signals: Array<{
+    label: string;
+    impact: "positive" | "neutral" | "negative";
+    detail: string;
+  }>;
+};
+
+export type EvidenceReceipt = {
+  liquidityUsd?: number;
+  volume24hUsd?: number;
+  poolAgeDays?: number;
+  slippageEstimatePercent?: number;
+  priceImpactEstimatePercent?: number;
+  approvalType: "none" | "exact" | "unknown" | "unlimited";
+  simulationStatus: QuotePreview["simulation"]["status"];
+  simulationGasEstimate?: string;
+  routeSources: string[];
+  evidenceHash: `0x${string}`;
+  observedAt: string;
+  notes: string[];
+};
+
+export type TransactionPreview = {
+  decodedAction: string;
+  chain: string;
+  fromToken?: string;
+  toToken?: string;
+  amount?: string;
+  protocol: string;
+  approvalType: EvidenceReceipt["approvalType"];
+  simulation: QuotePreview["simulation"];
+  evidence: EvidenceReceipt;
+  decodedTransaction?: DecodedTransaction;
+};
+
+export type FirewallEvaluation = {
+  decision: FirewallDecision;
+  policy: AgentWalletPolicy;
+  violations: PolicyViolation[];
+  scamPatterns: ScamPatternMatch[];
+  guardrailState: AgentGuardrailState;
+  walletHealth: WalletHealthScore;
+  transactionPreview: TransactionPreview;
+  summary: string;
+  evaluatedAt: string;
+};
+
+export type RawTransactionInput = {
+  to?: `0x${string}`;
+  data: `0x${string}`;
+  valueWei?: string;
+  chain?: string;
+  tokenSymbol?: string;
+};
+
+export type DecodedTransaction = {
+  kind: "erc20-approve" | "erc20-transfer" | "erc20-transfer-from" | "unknown";
+  functionName: string;
+  contractAddress?: `0x${string}`;
+  spender?: `0x${string}`;
+  recipient?: `0x${string}`;
+  owner?: `0x${string}`;
+  amountRaw?: string;
+  isUnlimitedApproval: boolean;
+  riskNotes: string[];
+};
+
+export const AgentWalletPolicySchema = z
+  .object({
+    maxSlippagePercent: z.number().min(0).max(100),
+    maxTransactionUsd: z.number().min(0),
+    allowedTokens: z.array(z.string().trim().min(1)).max(30),
+    allowedProtocols: z.array(z.string().trim().min(1)).max(30),
+    allowBridges: z.boolean(),
+    allowUnlimitedApprovals: z.boolean(),
+    minLiquidityUsd: z.number().min(0),
+    minPoolAgeDays: z.number().min(0),
+    requireVerifiedContracts: z.boolean(),
+    riskBlockThreshold: z.number().min(0).max(100),
+    riskWarnThreshold: z.number().min(0).max(100)
+  })
+  .strict() satisfies z.ZodType<AgentWalletPolicy>;
+
+export const DEFAULT_AGENT_WALLET_POLICY: AgentWalletPolicy = {
+  maxSlippagePercent: 1,
+  maxTransactionUsd: 5000,
+  allowedTokens: ["ETH", "WETH", "USDC", "USDT", "DAI", "WBTC"],
+  allowedProtocols: ["0x", "Uniswap", "Base", "SentinelMesh"],
+  allowBridges: false,
+  allowUnlimitedApprovals: false,
+  minLiquidityUsd: 100_000,
+  minPoolAgeDays: 30,
+  requireVerifiedContracts: true,
+  riskBlockThreshold: 85,
+  riskWarnThreshold: 55
+};
+
+export const FirewallEvaluateRequestSchema = z
+  .object({
+    intent: DeFiIntentSchema,
+    analysis: RiskAnalysisSchema.optional(),
+    quote: z.unknown().optional(),
+    rawTransaction: z
+      .object({
+        to: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid transaction target").optional(),
+        data: z.string().regex(/^0x[a-fA-F0-9]*$/, "Invalid calldata"),
+        valueWei: z.string().regex(/^\d+$/, "Invalid transaction value").optional(),
+        chain: z.string().trim().min(1).max(80).optional(),
+        tokenSymbol: z.string().trim().min(1).max(20).optional()
+      })
+      .strict()
+      .optional(),
+    policy: AgentWalletPolicySchema.optional()
+  })
+  .strict();
+
+export const RawTransactionDecodeRequestSchema = z
+  .object({
+    transaction: z
+      .object({
+        to: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid transaction target").optional(),
+        data: z.string().regex(/^0x[a-fA-F0-9]*$/, "Invalid calldata"),
+        valueWei: z.string().regex(/^\d+$/, "Invalid transaction value").optional(),
+        chain: z.string().trim().min(1).max(80).optional(),
+        tokenSymbol: z.string().trim().min(1).max(20).optional()
+      })
+      .strict()
+  })
+  .strict();
+
+export type OrchestrationStepStatus = "queued" | "running" | "completed" | "warning" | "blocked" | "failed";
+
+export type OrchestrationStep = {
+  id: string;
+  label: string;
+  agentName: string;
+  status: OrchestrationStepStatus;
+  dependencies: string[];
+  startedAt?: string;
+  completedAt?: string;
+  durationMs?: number;
+  summary: string;
+};
+
+export type OrchestrationGate = {
+  id: string;
+  label: string;
+  status: "pass" | "warn" | "block";
+  reason: string;
+};
+
+export type OrchestrationRun = {
+  runId: string;
+  status: "completed" | "needs-review" | "blocked" | "failed";
+  mode: "simulation";
+  prompt: string;
+  parsedIntent: DeFiIntent;
+  riskAnalysis: RiskAnalysis;
+  routeAnalysis: RouteAnalysis;
+  quotePreview: QuotePreview;
+  firewallEvaluation: FirewallEvaluation;
+  selectedRouteId?: string;
+  agentTrace: AgentResult[];
+  steps: OrchestrationStep[];
+  gates: OrchestrationGate[];
+  nextActions: string[];
+  summary: string;
+  startedAt: string;
+  completedAt: string;
+};
+
+export const OrchestrationRunRequestSchema = z
+  .object({
+    prompt: IntentPromptSchema.shape.prompt,
+    policy: AgentWalletPolicySchema.optional(),
+    rawTransaction: z
+      .object({
+        to: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid transaction target").optional(),
+        data: z.string().regex(/^0x[a-fA-F0-9]*$/, "Invalid calldata"),
+        valueWei: z.string().regex(/^\d+$/, "Invalid transaction value").optional(),
+        chain: z.string().trim().min(1).max(80).optional(),
+        tokenSymbol: z.string().trim().min(1).max(20).optional()
+      })
+      .strict()
+      .optional()
+  })
+  .strict();
+
+export const ReportCreateRequestSchema = z
+  .object({
+    prompt: IntentPromptSchema.shape.prompt,
+    parsedIntent: DeFiIntentSchema,
+    selectedRouteId: z.string().trim().min(1).max(120),
+    userAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid wallet address").optional(),
+    policy: AgentWalletPolicySchema.optional()
+  })
+  .strict();
+
 export type ExecutionMode = "Simulation Only" | "Report On-chain";
 
 export type SentinelReport = {
@@ -315,6 +544,8 @@ export type SentinelReport = {
   riskFactors: RiskFactors;
   riskFactorExplanations: RiskFactorExplanation[];
   marketEvidence?: MarketEvidence;
+  evidenceReceipt?: EvidenceReceipt;
+  firewallEvaluation?: FirewallEvaluation;
   recommendedRoute: RouteRecommendation;
   agentTrace: AgentResult[];
   modelVersion: string;

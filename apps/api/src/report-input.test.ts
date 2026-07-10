@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ReportCreateRequestSchema } from "@sentinelmesh/shared";
+import { DEFAULT_AGENT_WALLET_POLICY, ReportCreateRequestSchema } from "@sentinelmesh/shared";
 
 const validRequest = {
   prompt: "Swap 0.2 ETH to USDC safely",
@@ -19,6 +19,14 @@ const validRequest = {
 test("accepts only the reviewed intent and selected route for report creation", () => {
   const parsed = ReportCreateRequestSchema.parse(validRequest);
   assert.equal(parsed.selectedRouteId, "protected-swap");
+});
+
+test("accepts a validated wallet policy for firewall-backed reports", () => {
+  const parsed = ReportCreateRequestSchema.parse({
+    ...validRequest,
+    policy: DEFAULT_AGENT_WALLET_POLICY
+  });
+  assert.equal(parsed.policy?.allowBridges, false);
 });
 
 test("rejects client-supplied risk scores and recommendations", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, BadgeCheck, CheckCircle2, Check, Copy, Download, ExternalLink, FileCheck2, Loader2, Share2 } from "lucide-react";
+import { AlertTriangle, BadgeCheck, CheckCircle2, Check, Copy, Download, ExternalLink, FileCheck2, Loader2, Share2, ShieldAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { usePublicClient } from "wagmi";
 import type { SentinelReport } from "@sentinelmesh/shared";
@@ -209,6 +209,63 @@ export function ReportDetail({ id }: { id: string }) {
 
       <MarketEvidence evidence={report.marketEvidence} />
 
+      {(report.firewallEvaluation || report.evidenceReceipt) && (
+        <section className="surface rounded-lg p-5">
+          <div className="eyebrow flex items-center gap-2 text-violet"><ShieldAlert size={14} /> Transaction firewall</div>
+          <h2 className="mt-1 font-semibold text-ink">Risk attestation</h2>
+          {report.firewallEvaluation && (
+            <div className={cn("mt-4 rounded-md border p-4 text-sm", firewallTone(report.firewallEvaluation.decision))}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="font-semibold">{report.firewallEvaluation.decision}: {report.firewallEvaluation.summary}</div>
+                <span className="rounded bg-white/70 px-2 py-1 text-[10px] font-bold">
+                  Policy v1
+                </span>
+              </div>
+              {report.firewallEvaluation.violations.length > 0 && (
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  {report.firewallEvaluation.violations.map((violation) => (
+                    <div key={violation.ruleId} className="rounded-md border border-white/60 bg-white/55 p-3">
+                      <div className="text-xs font-semibold">{violation.title}</div>
+                      <p className="mt-1 text-xs leading-5">{violation.detail}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                <div className="rounded-md border border-white/60 bg-white/55 p-3">
+                  <div className="text-xs font-semibold">Wallet health</div>
+                  <p className="mt-1 text-xs leading-5">
+                    {report.firewallEvaluation.walletHealth.score}/100 · {report.firewallEvaluation.walletHealth.level}
+                  </p>
+                </div>
+                <div className="rounded-md border border-white/60 bg-white/55 p-3">
+                  <div className="text-xs font-semibold">Agent guardrail</div>
+                  <p className="mt-1 text-xs leading-5">{report.firewallEvaluation.guardrailState.reason}</p>
+                </div>
+              </div>
+              {report.firewallEvaluation.scamPatterns.length > 0 && (
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  {report.firewallEvaluation.scamPatterns.map((pattern) => (
+                    <div key={pattern.patternId} className="rounded-md border border-white/60 bg-white/55 p-3">
+                      <div className="text-xs font-semibold">{pattern.title}</div>
+                      <p className="mt-1 text-xs leading-5">{pattern.recommendation}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {report.evidenceReceipt && (
+            <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+              <HashRow label="Evidence hash" value={shortHash(report.evidenceReceipt.evidenceHash)} />
+              <HashRow label="Approval" value={report.evidenceReceipt.approvalType} />
+              <HashRow label="Simulation" value={report.evidenceReceipt.simulationStatus} />
+              <HashRow label="Pool age" value={formatDays(report.evidenceReceipt.poolAgeDays)} />
+            </div>
+          )}
+        </section>
+      )}
+
       <section className="surface rounded-lg p-5">
         <div className="eyebrow">Assessment</div>
         <h2 className="mt-1 font-semibold text-ink">Risk factors</h2>
@@ -298,6 +355,17 @@ function verificationCopy(report: SentinelReport) {
     className: "border-border bg-panel2 text-muted",
     icon: FileCheck2
   };
+}
+
+function firewallTone(decision: "ALLOW" | "WARN" | "BLOCK") {
+  if (decision === "ALLOW") return "border-success/20 bg-emerald-50 text-success";
+  if (decision === "WARN") return "border-warning/20 bg-amber-50 text-amber-900";
+  return "border-danger/20 bg-red-50 text-danger";
+}
+
+function formatDays(value?: number) {
+  if (value === undefined) return "fallback";
+  return `${Math.floor(value)} days`;
 }
 
 function downloadReport(report: SentinelReport) {

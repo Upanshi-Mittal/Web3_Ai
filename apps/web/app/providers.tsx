@@ -6,7 +6,7 @@ import {
   RainbowKitProvider,
   connectorsForWallets,
   createAuthenticationAdapter,
-  lightTheme,
+  darkTheme,
   type AuthenticationStatus
 } from "@rainbow-me/rainbowkit";
 import { metaMaskWallet, walletConnectWallet } from "@rainbow-me/rainbowkit/wallets";
@@ -97,7 +97,7 @@ export function Providers({ children }: { children: ReactNode }) {
           }),
         verify: async ({ message, signature }) => {
           try {
-            const result = await api.verifyAuth(message, signature);
+            const result = await api.verifyAuth(normalizeSiweMessage(message), normalizeSignature(signature));
             setAuthUser(result.user);
             setAuthStatus("authenticated");
             return true;
@@ -121,7 +121,14 @@ export function Providers({ children }: { children: ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <SentinelAuthContext.Provider value={{ status: authStatus, user: authUser }}>
           <RainbowKitAuthenticationProvider adapter={authAdapter} status={authStatus}>
-            <RainbowKitProvider theme={lightTheme({ accentColor: "#138a61", borderRadius: "small" })}>
+            <RainbowKitProvider
+              theme={darkTheme({
+                accentColor: "#7eed61",
+                accentColorForeground: "#07130f",
+                borderRadius: "medium",
+                overlayBlur: "small"
+              })}
+            >
               {children}
             </RainbowKitProvider>
           </RainbowKitAuthenticationProvider>
@@ -129,4 +136,19 @@ export function Providers({ children }: { children: ReactNode }) {
       </QueryClientProvider>
     </WagmiProvider>
   );
+}
+
+function normalizeSiweMessage(message: unknown) {
+  if (typeof message === "string") return message;
+  if (message && typeof message === "object") {
+    const maybeMessage = message as { message?: unknown; toMessage?: () => string; prepareMessage?: () => string };
+    if (typeof maybeMessage.message === "string") return maybeMessage.message;
+    if (typeof maybeMessage.prepareMessage === "function") return maybeMessage.prepareMessage();
+    if (typeof maybeMessage.toMessage === "function") return maybeMessage.toMessage();
+  }
+  return String(message ?? "");
+}
+
+function normalizeSignature(signature: unknown) {
+  return typeof signature === "string" ? signature : String(signature ?? "");
 }

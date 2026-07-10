@@ -4,8 +4,10 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ i
   const { id } = await params;
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <ReportDetail id={id} />
+    <main className="sentinel-dark-page px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <ReportDetail id={id} />
+      </div>
     </main>
   );
 }

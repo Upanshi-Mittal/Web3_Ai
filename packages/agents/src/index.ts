@@ -5,7 +5,9 @@ import {
   MODEL_VERSION,
   type AgentResult,
   type DeFiIntent,
+  type EvidenceReceipt,
   type FixtureScenario,
+  type FirewallEvaluation,
   type RiskAnalysis,
   type RiskFactors,
   type RiskLevel,
@@ -22,6 +24,8 @@ export type AgentContext = {
   riskAnalysis?: RiskAnalysis;
   routeAnalysis?: RouteAnalysis;
   routeRecommendation?: RouteRecommendation;
+  evidenceReceipt?: EvidenceReceipt;
+  firewallEvaluation?: FirewallEvaluation;
   userAddress?: string;
   reportURI?: string;
   chainTxHash?: `0x${string}`;
@@ -152,6 +156,8 @@ export const ReportAgent: Agent<SentinelReport> = {
       riskFactors: context.riskAnalysis.riskFactors,
       riskFactorExplanations: context.riskAnalysis.factorExplanations,
       marketEvidence: context.riskAnalysis.marketEvidence,
+      evidenceReceipt: context.evidenceReceipt,
+      firewallEvaluation: context.firewallEvaluation,
       recommendedRoute: context.routeRecommendation,
       modelVersion: MODEL_VERSION,
       reportURI,

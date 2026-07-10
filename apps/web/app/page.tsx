@@ -13,67 +13,138 @@ import {
   ShieldCheck,
   Sparkles
 } from "lucide-react";
+import { LazyAppControlPlane3D } from "@/components/hero/LazyAppControlPlane3D";
 
 const loop = ["Ask", "Parse", "Analyze", "Recommend", "Verify", "Save", "Share"];
 
 export default function LandingPage() {
   return (
     <main>
-      <section className="border-b border-border/80">
-        <div className="mx-auto grid min-h-[calc(100vh-66px)] max-w-7xl items-center gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[0.86fr_1.14fr] lg:px-8">
-          <div className="max-w-xl">
-            <div className="eyebrow flex items-center gap-2">
-              <Sparkles size={14} />
-              Multi-agent DeFi risk intelligence
+      <section className="relative overflow-hidden bg-[#1e341a] px-3 py-5 sm:px-5 sm:py-8">
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(126,239,97,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(126,239,97,0.05)_1px,transparent_1px)] bg-[length:46px_46px]" />
+        <div className="relative mx-auto max-w-7xl rounded-[28px] border border-[#7eed61]/70 bg-black shadow-[0_0_24px_rgba(126,239,97,0.70),0_0_86px_rgba(126,239,97,0.38)]">
+          <div className="relative min-h-[calc(100svh-7rem)] overflow-hidden rounded-[27px]">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_76%_44%,rgba(126,239,97,0.18),transparent_28%),linear-gradient(90deg,rgba(0,0,0,0.98)_0%,rgba(0,0,0,0.94)_43%,rgba(7,27,16,0.74)_100%)]" />
+            <div className="absolute inset-y-20 right-0 w-full max-w-4xl opacity-95">
+              <LazyAppControlPlane3D />
             </div>
-            <h1 className="mt-5 text-5xl font-semibold leading-[1.02] text-ink sm:text-7xl">
-              SentinelMesh
-            </h1>
-            <p className="mt-6 text-lg leading-8 text-muted">
-              Turn a plain-English DeFi intent into an explainable risk score, safer route, and verifiable testnet report before signing.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link
-                href="/app"
-                className="inline-flex items-center gap-2 rounded-md bg-ink px-5 py-3 text-sm font-semibold text-white shadow-lift transition hover:-translate-y-0.5"
-              >
-                Analyze an intent
-                <ArrowRight size={17} />
+            <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,0,0,0.96)_0%,rgba(0,0,0,0.90)_45%,rgba(0,0,0,0.38)_100%)]" />
+            <div className="absolute inset-0 bg-[linear-gradient(rgba(126,239,97,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(126,239,97,0.035)_1px,transparent_1px)] bg-[length:38px_38px]" />
+
+            <header className="relative z-10 flex flex-wrap items-center justify-between gap-4 px-5 py-5 sm:px-8 lg:px-12">
+              <Link href="/" className="flex items-center gap-3 text-white">
+                <span className="flex h-10 w-10 items-center justify-center rounded-md border border-[#7eed61]/45 bg-[#102a21] text-[#7eed61] shadow-[0_0_22px_rgba(126,239,97,0.24)]">
+                  <ShieldCheck size={21} />
+                </span>
+                <span className="text-xl font-black tracking-wide">SentinelMesh</span>
               </Link>
-              <Link
-                href="/reports"
-                className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-5 py-3 text-sm font-semibold text-ink hover:border-teal/40"
-              >
-                View report registry
-              </Link>
-            </div>
-            <div className="mt-8 grid grid-cols-3 gap-4 border-t border-border pt-6 text-sm">
-              <Metric value="5" label="Specialist agents" />
-              <Metric value="7" label="Risk signals" />
-              <Metric value="0" label="Custodied funds" />
+              <nav className="hidden items-center gap-7 text-sm font-semibold text-white/70 lg:flex">
+                <a href="#features" className="hover:text-[#7eed61]">Features</a>
+                <a href="#loop" className="hover:text-[#7eed61]">Workflow</a>
+                <a href="#trust" className="hover:text-[#7eed61]">Trust</a>
+              </nav>
+              <div className="flex items-center gap-2">
+                <Link href="/reports" className="hidden rounded-full border border-white/15 px-4 py-2 text-xs font-bold text-white/80 hover:border-[#7eed61]/60 hover:text-[#7eed61] sm:inline-flex">
+                  Reports
+                </Link>
+                <Link href="/app" className="inline-flex items-center gap-2 rounded-full bg-[#7eed61] px-5 py-2.5 text-xs font-black text-black shadow-[0_0_24px_rgba(126,239,97,0.35)] transition hover:-translate-y-0.5">
+                  Launch app
+                  <ArrowRight size={15} />
+                </Link>
+              </div>
+            </header>
+
+            <div className="relative z-10 grid min-h-[calc(100svh-13rem)] items-center gap-8 px-5 pb-12 pt-10 sm:px-8 lg:grid-cols-[0.78fr_1fr] lg:px-12">
+              <div className="max-w-2xl">
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full border border-[#7eed61]/40 bg-[#7eed61]/10 px-3 py-1.5 text-xs font-bold text-[#a8ff8d]">
+                    AI orchestration layer
+                  </span>
+                  <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-bold text-white/75">
+                    Testnet · non-custodial
+                  </span>
+                </div>
+                <h1 className="mt-7 text-5xl font-black leading-[1.03] text-white [text-shadow:0_0_28px_rgba(126,239,97,0.16)] sm:text-7xl">
+                  Pre-signing firewall for DeFi wallets and agents
+                </h1>
+                <p className="mt-6 max-w-xl text-base font-medium leading-8 text-white/80 sm:text-lg">
+                  SentinelMesh turns a plain-English DeFi intent into a coordinated agent run: parse, score, route, simulate, enforce policy, and save verifiable evidence before signing.
+                </p>
+                <div className="mt-8 flex flex-wrap gap-3">
+                  <Link
+                    href="/app"
+                    className="inline-flex min-w-56 items-center justify-center gap-2 rounded-full bg-[#7eed61] px-7 py-4 text-sm font-black text-black shadow-[0_0_30px_rgba(126,239,97,0.36)] transition hover:-translate-y-0.5"
+                  >
+                    Enter control plane
+                    <ArrowRight size={17} />
+                  </Link>
+                  <Link
+                    href="/agent-wallet"
+                    className="inline-flex items-center gap-2 rounded-full border border-white/16 bg-white/5 px-6 py-4 text-sm font-bold text-white hover:border-[#7eed61]/55 hover:text-[#a8ff8d]"
+                  >
+                    Agent demo
+                    <Bot size={17} />
+                  </Link>
+                </div>
+                <div className="mt-10 grid max-w-xl grid-cols-3 gap-3 border-t border-white/10 pt-6">
+                  <DarkMetric value="5" label="Agents" />
+                  <DarkMetric value="7" label="Risk signals" />
+                  <DarkMetric value="0" label="Custody" />
+                </div>
+              </div>
+
+              <div className="relative hidden min-h-[420px] lg:block" aria-hidden="true">
+                <div className="absolute bottom-8 right-8 w-72 rounded-lg border border-[#7eed61]/25 bg-black/55 p-4 text-white shadow-[0_0_40px_rgba(126,239,97,0.14)] backdrop-blur">
+                  <div className="flex items-center justify-between text-xs font-bold text-[#a8ff8d]">
+                    ORCHESTRATOR
+                    <span>ALLOW</span>
+                  </div>
+                  <div className="mt-3 space-y-2 text-[11px] text-white/60">
+                    {["IntentAgent parsed swap", "RiskAgent scored 15/100", "Firewall gate passed"].map((item) => (
+                      <div key={item} className="flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#7eed61]" />
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
+        </div>
+      </section>
 
+      <section id="loop" className="bg-white/65 py-14">
+        <div className="mx-auto grid max-w-7xl items-center gap-8 px-4 sm:px-6 lg:grid-cols-[0.78fr_1.22fr] lg:px-8">
+          <div>
+            <div className="eyebrow">Product loop</div>
+            <h2 className="mt-3 max-w-xl text-3xl font-semibold text-ink">From natural-language intent to signed evidence.</h2>
+            <p className="mt-4 max-w-lg text-sm leading-7 text-muted">
+              Judges can see the 3D mesh first, then run the actual workflow: parse, score, recommend, firewall, save, and verify.
+            </p>
+          </div>
           <ProductPreview />
         </div>
       </section>
 
-      <section className="bg-white/65 py-16">
+      <section id="features" className="bg-emerald-50/45 py-16">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
             <div>
               <div className="eyebrow">One review surface</div>
-              <h2 className="mt-3 max-w-2xl text-3xl font-semibold text-ink">Evidence before execution.</h2>
+              <h2 className="mt-3 max-w-2xl text-3xl font-semibold text-ink">Policy checks before signatures.</h2>
             </div>
             <p className="max-w-xl text-sm leading-6 text-muted">
-              Every recommendation stays inspectable: inputs, weighted factors, route tradeoffs, agent trace, report hash, and registry proof.
+              Every decision stays inspectable: decoded action, weighted factors, route tradeoffs, policy violations, evidence hash, and registry proof.
             </p>
           </div>
-          <div className="mt-9 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-4">
+          <div className="mt-9 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-3 lg:grid-cols-6">
             {[
               ["Intent intelligence", "Editable structured parsing with deterministic fallback.", Bot],
               ["Explainable scoring", "Seven visible signals with weighted risk factors.", CircleGauge],
               ["Route comparison", "Pros, tradeoffs, impact, gas, and execution mode.", Route],
+              ["Policy firewall", "Allow, warn, or block before a wallet or agent signs.", LockKeyhole],
+              ["Agent guardrails", "Pause risky autonomous actions and require human approval.", Bot],
               ["On-chain evidence", "A registry hash proves the report existed unchanged.", Database]
             ].map(([title, body, Icon]) => (
               <div key={String(title)} className="bg-white p-6">
@@ -86,13 +157,13 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="border-y border-border py-16">
+      <section id="trust" className="border-y border-border py-16">
         <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
           <div>
             <div className="eyebrow">Trust boundary</div>
             <h2 className="mt-3 text-3xl font-semibold text-ink">User-controlled by design.</h2>
             <p className="mt-4 text-sm leading-7 text-muted">
-              SentinelMesh provides risk analysis and testnet evidence. It never takes custody, never silently executes a swap, and never promises guaranteed MEV protection.
+              SentinelMesh provides risk analysis, policy checks, and testnet evidence. It never takes custody, never silently executes a swap, and never promises guaranteed MEV protection.
             </p>
             <ul className="mt-6 space-y-3">
               {["No custody or seed phrases", "No mainnet execution in v0", "Wallet confirms every registry write"].map((item) => (
@@ -122,7 +193,7 @@ export default function LandingPage() {
               <LockKeyhole size={16} />
               Base Sepolia ready
             </div>
-            <h2 className="mt-2 text-2xl font-semibold">Review the route before the wallet prompt.</h2>
+            <h2 className="mt-2 text-2xl font-semibold">Check policy before the wallet prompt.</h2>
           </div>
           <Link href="/app" className="inline-flex items-center gap-2 rounded-md bg-emerald-200 px-5 py-3 text-sm font-semibold text-ink hover:bg-emerald-100">
             Open SentinelMesh
@@ -207,6 +278,15 @@ function Metric({ value, label }: { value: string; label: string }) {
     <div>
       <div className="text-xl font-semibold text-ink">{value}</div>
       <div className="mt-1 text-xs text-muted">{label}</div>
+    </div>
+  );
+}
+
+function DarkMetric({ value, label }: { value: string; label: string }) {
+  return (
+    <div>
+      <div className="text-2xl font-black text-[#7eed61]">{value}</div>
+      <div className="mt-1 text-xs font-semibold text-white/60">{label}</div>
     </div>
   );
 }

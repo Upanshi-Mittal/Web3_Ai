@@ -13,7 +13,7 @@ Use this as the final Upanshi-side demo guide. Fill live URLs after deployment.
 
 ### 0:00-0:15 - Problem
 
-"DeFi users often sign transactions without understanding slippage, liquidity, token, route, gas, or MEV-style ordering risk. SentinelMesh gives them a risk report before they make that decision."
+"AI agents and DeFi users are starting to control wallets, but every signature can move real assets. SentinelMesh acts as an AI transaction firewall: before a wallet or agent signs, it decodes the action, simulates what it can, checks policy, explains risk with evidence, and creates a verifiable safety trail."
 
 Show:
 
@@ -25,7 +25,7 @@ Show:
 Prompt:
 
 ```txt
-I want to swap 50 USDC to ETH on a low-risk route with minimal slippage.
+Swap 50 USDC to ETH with max 1% slippage.
 ```
 
 Narration:
@@ -51,11 +51,11 @@ Show:
 - Top factor cards
 - Full risk breakdown
 
-### 0:55-1:15 - Route Recommendation
+### 0:55-1:15 - Route Recommendation And Firewall
 
 Narration:
 
-"The Route Agent compares possible routes and clearly marks the recommendation. For v0 this is advisory risk intelligence, not automatic swap execution."
+"The Route Agent compares possible routes and clearly marks the recommendation. Then the transaction firewall checks the action against wallet policy: slippage limit, token allowlist, liquidity floor, pool age, bridge policy, approval type, and risk threshold."
 
 Show:
 
@@ -63,12 +63,15 @@ Show:
 - Recommended badge
 - Pros/tradeoffs
 - Supported execution modes
+- Transaction firewall panel
+- `ALLOW` decision for the safe case
+- Evidence hash and decoded action
 
 ### 1:15-1:35 - Report Generation
 
 Narration:
 
-"The user can create a deterministic risk report. Without deployed contract metadata, SentinelMesh creates an honest local-only report. With the testnet registry configured, the hash can be anchored on-chain."
+"The user can create a deterministic risk report. The report hash commits to the risk score, route recommendation, policy decision, and evidence receipt. Without deployed contract metadata, SentinelMesh creates an honest local-only report. With the testnet registry configured, the hash can be anchored on-chain."
 
 Show:
 
@@ -93,22 +96,30 @@ Show:
 - Download JSON
 - Verification badge
 
-### 1:50-2:00 - Risky Scenario
+### 1:50-2:15 - Agent Kill Switch
 
 Prompt:
 
 ```txt
-I want to bridge 5000 USDC to a new high-yield protocol on an unfamiliar chain.
+Bridge 5000 USDC to a new high-yield protocol on an unknown chain.
 ```
 
 Narration:
 
-"For risky or unsupported flows, SentinelMesh does not overclaim. It pushes the user toward simulation and report-only review when risk is high."
+"For the strongest AI-agent story, open Agent Wallet mode. The agent first proposes a safe rebalance, then a suspicious high-yield bridge. SentinelMesh detects policy violations and scam-pattern signals, pauses the agent, requires human approval, and saves a risk attestation."
 
 Show:
 
-- High-risk explanation or unsupported fallback
-- Route/report-only state
+- `/agent-wallet`
+- Safe rebalance scenario
+- Suspicious yield scenario
+- High-risk explanation
+- Firewall `BLOCK` decision
+- Blocking policy violations
+- Wallet health score
+- Transaction time machine
+- Agent kill switch
+- Saved local attestation report
 
 ## Screenshot Checklist
 
@@ -118,6 +129,11 @@ Capture these before submission:
 - `/app` with parsed safe intent
 - Risk score and top risk factors
 - Route comparison with recommended route
+- Transaction firewall with ALLOW decision
+- Risky scenario with BLOCK decision
+- `/agent-wallet` safe scenario
+- `/agent-wallet` kill switch paused state
+- Wallet health score and scam-pattern cards
 - Wallet/report sidebar with local-only or transaction state
 - Agent timeline with all five agents visible
 - `/reports` history with counts/search/filter
@@ -127,7 +143,7 @@ Capture these before submission:
 
 ## Final Pitch Text
 
-SentinelMesh is a multi-agent DeFi risk copilot that helps users understand execution risk before signing transactions. A user enters a natural-language intent, SentinelMesh parses it into structured fields, scores slippage/liquidity/token/gas/route/MEV exposure, recommends a safer route, and generates a verifiable report that can be saved, shared, and anchored on-chain through a testnet registry.
+SentinelMesh is an AI transaction firewall for DeFi users and autonomous agents. Before a wallet or agent signs, SentinelMesh parses the intent, scores slippage/liquidity/token/gas/route/MEV exposure, checks user-defined policy, explains the decision with evidence, and generates a verifiable report that can be saved, shared, and anchored on-chain through a testnet registry.
 
 ## Submission Checklist
 
@@ -145,4 +161,4 @@ SentinelMesh is a multi-agent DeFi risk copilot that helps users understand exec
 
 ## Safety Boundary To Say Out Loud
 
-SentinelMesh v0 is a risk intelligence and verification layer. It does not custody funds, execute swaps, or guarantee MEV protection.
+SentinelMesh v0 is a risk intelligence, policy, and verification layer. It does not custody funds, execute swaps, or guarantee MEV protection.
